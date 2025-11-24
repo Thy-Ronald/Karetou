@@ -29,6 +29,7 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle,
   Cancel,
@@ -43,6 +44,10 @@ import {
   Description,
   Close,
   ZoomIn,
+  Edit,
+  Save,
+  Visibility,
+  History,
 } from '@mui/icons-material';
 import { collection, query, getDocs, doc, updateDoc, setDoc, where } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -82,6 +87,7 @@ interface BusinessApprovalsProps {
 
 const BusinessApprovals: React.FC<BusinessApprovalsProps> = ({ tab }) => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [businesses, setBusinesses] = useState<BusinessRegistration[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBusiness, setSelectedBusiness] = useState<BusinessRegistration | null>(null);
@@ -95,6 +101,11 @@ const BusinessApprovals: React.FC<BusinessApprovalsProps> = ({ tab }) => {
   const [rejectTimer, setRejectTimer] = useState<number | null>(null);
   const [rejectCountdown, setRejectCountdown] = useState<number>(0);
   const [rejectingBusinessId, setRejectingBusinessId] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editFormData, setEditFormData] = useState<Partial<BusinessRegistration>>({});
+  const [updating, setUpdating] = useState(false);
+  const [updateSuccess, setUpdateSuccess] = useState('');
+  const [updateError, setUpdateError] = useState('');
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
@@ -362,7 +373,123 @@ const BusinessApprovals: React.FC<BusinessApprovalsProps> = ({ tab }) => {
     }
     setSelectedBusiness(business);
     setRejectionReason(business.rejectionReason || '');
+    setEditMode(false);
+    setEditFormData({});
+    setUpdateSuccess('');
+    setUpdateError('');
     setDialogOpen(true);
+  };
+
+  const handleViewClick = (business: BusinessRegistration, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    handleCardClick(business);
+  };
+
+  const handleEditClickFromTable = (business: BusinessRegistration, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (business.status === 'approved') {
+      setSelectedBusiness(business);
+      setRejectionReason(business.rejectionReason || '');
+      setEditMode(true);
+      setEditFormData({
+        businessName: business.businessName,
+        businessOwner: business.businessOwner,
+        selectedType: business.selectedType,
+        businessHours: business.businessHours,
+        contactNumber: business.contactNumber,
+        optionalContactNumber: business.optionalContactNumber || '',
+        businessAddress: business.businessAddress,
+        permitNumber: business.permitNumber,
+      });
+      setUpdateSuccess('');
+      setUpdateError('');
+      setDialogOpen(true);
+    }
+  };
+
+  const handleEditClick = () => {
+    if (selectedBusiness) {
+      setEditMode(true);
+      setEditFormData({
+        businessName: selectedBusiness.businessName,
+        businessOwner: selectedBusiness.businessOwner,
+        selectedType: selectedBusiness.selectedType,
+        businessHours: selectedBusiness.businessHours,
+        contactNumber: selectedBusiness.contactNumber,
+        optionalContactNumber: selectedBusiness.optionalContactNumber || '',
+        businessAddress: selectedBusiness.businessAddress,
+        permitNumber: selectedBusiness.permitNumber,
+      });
+      setUpdateSuccess('');
+      setUpdateError('');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditMode(false);
+    setEditFormData({});
+    setUpdateSuccess('');
+    setUpdateError('');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedBusiness) return;
+
+    try {
+      setUpdating(true);
+      setUpdateError('');
+      setUpdateSuccess('');
+
+      const businessRef = doc(db, 'businesses', selectedBusiness.id);
+      await updateDoc(businessRef, {
+        businessName: editFormData.businessName,
+        businessOwner: editFormData.businessOwner,
+        selectedType: editFormData.selectedType,
+        businessHours: editFormData.businessHours,
+        contactNumber: editFormData.contactNumber,
+        optionalContactNumber: editFormData.optionalContactNumber || '',
+        businessAddress: editFormData.businessAddress,
+        permitNumber: editFormData.permitNumber,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user?.email || 'admin',
+      });
+
+      // Log activity
+      await logAdminAction({
+        action: 'Edited Business',
+        actionType: 'edit',
+        targetType: 'business',
+        targetName: editFormData.businessName || selectedBusiness.businessName,
+        targetId: selectedBusiness.id,
+        adminEmail: user?.email || '',
+        adminId: user?.uid || '',
+        details: `Business information updated`,
+      });
+
+      // Update local state
+      setBusinesses(prevBusinesses =>
+        prevBusinesses.map(b =>
+          b.id === selectedBusiness.id
+            ? { ...b, ...editFormData }
+            : b
+        )
+      );
+
+      // Update selected business
+      setSelectedBusiness({ ...selectedBusiness, ...editFormData });
+
+      setUpdateSuccess('Business information updated successfully!');
+      setEditMode(false);
+      
+      setTimeout(() => {
+        setUpdateSuccess('');
+      }, 3000);
+    } catch (error: any) {
+      console.error('Error updating business:', error);
+      setUpdateError(error.message || 'Failed to update business information');
+    } finally {
+      setUpdating(false);
+    }
   };
 
   // Cleanup timer on unmount or dialog close
@@ -450,18 +577,50 @@ const BusinessApprovals: React.FC<BusinessApprovalsProps> = ({ tab }) => {
           border: `1px solid ${statusInfo.color}30`,
         }}
       >
-        <Box display="flex" alignItems="center" gap={2} mb={1}>
-          <Box sx={{ color: statusInfo.color }}>
-            {statusInfo.icon}
+        <Box 
+          display="flex" 
+          alignItems="center" 
+          justifyContent="space-between" 
+          mb={1}
+          flexDirection={{ xs: 'column', sm: 'row' }}
+          gap={{ xs: 2, sm: 0 }}
+        >
+          <Box display="flex" alignItems="center" gap={2} flex={1}>
+            <Box sx={{ color: statusInfo.color }}>
+              {statusInfo.icon}
+            </Box>
+            <Box>
+              <Typography variant={isMobile ? "h5" : "h4"} sx={{ fontWeight: 700, color: '#1a1a2e', mb: 0.5 }}>
+                {statusInfo.title}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                {statusInfo.count} {statusInfo.count === 1 ? 'business' : 'businesses'} in this category
+              </Typography>
+            </Box>
           </Box>
-          <Box flex={1}>
-            <Typography variant="h4" sx={{ fontWeight: 700, color: '#1a1a2e', mb: 0.5 }}>
-              {statusInfo.title}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {statusInfo.count} {statusInfo.count === 1 ? 'business' : 'businesses'} in this category
-            </Typography>
-          </Box>
+          
+          {tabValue === 0 && (
+            <Button
+              variant="contained"
+              startIcon={<History />}
+              onClick={() => navigate('/application-history')}
+              fullWidth={isMobile}
+              size={isMobile ? "medium" : "large"}
+              sx={{
+                bgcolor: statusInfo.color,
+                color: '#fff',
+                textTransform: 'none',
+                width: { xs: '100%', sm: 'auto' },
+                minWidth: { xs: '100%', sm: 200 },
+                '&:hover': {
+                  bgcolor: statusInfo.color,
+                  opacity: 0.9,
+                },
+              }}
+            >
+              Application History
+            </Button>
+          )}
         </Box>
       </Box>
 
@@ -518,22 +677,17 @@ const BusinessApprovals: React.FC<BusinessApprovalsProps> = ({ tab }) => {
                         <TableCell sx={{ fontWeight: 600, fontSize: '0.875rem' }}>Address</TableCell>
                         <TableCell sx={{ fontWeight: 600, fontSize: '0.875rem' }}>Permit Number</TableCell>
                         <TableCell sx={{ fontWeight: 600, fontSize: '0.875rem' }}>Applied Date</TableCell>
+                        <TableCell sx={{ fontWeight: 600, fontSize: '0.875rem', textAlign: 'center' }}>Actions</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {filteredBusinesses.map((business) => (
                         <TableRow 
                           key={business.id}
-                          onClick={() => handleCardClick(business)}
                           sx={{ 
-                            cursor: 'pointer',
                             transition: 'all 0.2s ease',
                             '&:hover': { 
                               bgcolor: `${statusInfo.color}08`,
-                              transform: 'scale(1.001)',
-                            },
-                            '&:active': {
-                              bgcolor: `${statusInfo.color}15`,
                             }
                           }}
                         >
@@ -595,6 +749,46 @@ const BusinessApprovals: React.FC<BusinessApprovalsProps> = ({ tab }) => {
                               </Typography>
                             </Box>
                           </TableCell>
+                          <TableCell>
+                            <Box display="flex" gap={1} justifyContent="center" alignItems="center">
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<Visibility />}
+                                onClick={(e) => handleViewClick(business, e)}
+                                sx={{
+                                  textTransform: 'none',
+                                  fontSize: '0.75rem',
+                                  px: 1.5,
+                                  py: 0.5,
+                                  minWidth: 'auto',
+                                }}
+                              >
+                                View
+                              </Button>
+                              {business.status === 'approved' && (
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  startIcon={<Edit />}
+                                  onClick={(e) => handleEditClickFromTable(business, e)}
+                                  sx={{
+                                    textTransform: 'none',
+                                    fontSize: '0.75rem',
+                                    px: 1.5,
+                                    py: 0.5,
+                                    minWidth: 'auto',
+                                    bgcolor: '#667eea',
+                                    '&:hover': {
+                                      bgcolor: '#5568d3',
+                                    },
+                                  }}
+                                >
+                                  Edit
+                                </Button>
+                              )}
+                            </Box>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -609,26 +803,20 @@ const BusinessApprovals: React.FC<BusinessApprovalsProps> = ({ tab }) => {
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {filteredBusinesses.map((business) => (
           <Card 
-            key={business.id} 
-                  onClick={() => handleCardClick(business)}
+            key={business.id}
             sx={{ 
-              cursor: 'pointer',
               borderRadius: 3,
               border: '1px solid #e0e0e0',
               transition: 'all 0.3s ease',
-                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
               '&:hover': { 
                 transform: 'translateY(-4px)',
                 boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
                 borderColor: statusInfo.color,
-                    },
-                    '&:active': {
-                      transform: 'translateY(-2px)',
-              }
+              },
             }}
           >
-                  <CardActionArea>
-                    <CardContent sx={{ p: 2.5 }}>
+            <CardContent sx={{ p: 2.5 }}>
                 {/* Header with Business Name */}
                       <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
                         <Typography variant="h6" component="h2" sx={{ flex: 1, mr: 1, fontWeight: 600, color: '#1a1a2e', fontSize: '1.1rem' }}>
@@ -695,17 +883,51 @@ const BusinessApprovals: React.FC<BusinessApprovalsProps> = ({ tab }) => {
                   </Box>
                 </Box>
 
-                <Box mt={2} p={1.5} sx={{ 
-                  bgcolor: `${statusInfo.color}08`, 
-                  borderRadius: 2,
-                  textAlign: 'center',
-                }}>
-                  <Typography variant="caption" sx={{ color: statusInfo.color, fontWeight: 600 }}>
-                          Tap to view full details →
-                  </Typography>
+                <Box mt={2} display="flex" gap={1.5} justifyContent="center">
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<Visibility />}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleViewClick(business, e);
+                    }}
+                    sx={{
+                      textTransform: 'none',
+                      fontSize: '0.75rem',
+                      px: 2,
+                      py: 0.75,
+                      flex: 1,
+                    }}
+                  >
+                    View
+                  </Button>
+                  {business.status === 'approved' && (
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={<Edit />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditClickFromTable(business, e);
+                      }}
+                      sx={{
+                        textTransform: 'none',
+                        fontSize: '0.75rem',
+                        px: 2,
+                        py: 0.75,
+                        flex: 1,
+                        bgcolor: '#667eea',
+                        '&:hover': {
+                          bgcolor: '#5568d3',
+                        },
+                      }}
+                    >
+                      Edit
+                    </Button>
+                  )}
                 </Box>
               </CardContent>
-            </CardActionArea>
           </Card>
         ))}
       </Box>
@@ -714,20 +936,27 @@ const BusinessApprovals: React.FC<BusinessApprovalsProps> = ({ tab }) => {
       )}
 
       {/* Full Business Details Dialog */}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={dialogOpen} onClose={() => !editMode && setDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Typography variant="h6">
-              {selectedBusiness?.businessName} - Business Registration Details
-            </Typography>
-            <IconButton onClick={() => setDialogOpen(false)}>
-              <Close />
-            </IconButton>
-          </Box>
+          <Typography variant="h6">
+            {selectedBusiness?.businessName} - Business Registration Details
+          </Typography>
         </DialogTitle>
         <DialogContent dividers>
           {selectedBusiness && (
             <Box>
+              {/* Success/Error Messages */}
+              {updateSuccess && (
+                <Alert severity="success" sx={{ mb: 2 }}>
+                  {updateSuccess}
+                </Alert>
+              )}
+              {updateError && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  {updateError}
+                </Alert>
+              )}
+
               {/* Status and Basic Info */}
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
                 <Chip
@@ -747,32 +976,73 @@ const BusinessApprovals: React.FC<BusinessApprovalsProps> = ({ tab }) => {
                     Business Information
                   </Typography>
                   <Box mb={2}>
-                    <Box display="flex" alignItems="center" mb={1}>
-                      <Business sx={{ mr: 1, color: 'text.secondary' }} />
-                      <Box>
-                        <Typography variant="body2" color="text.secondary">Business Name</Typography>
-                        <Typography variant="body1" fontWeight="medium">{selectedBusiness.businessName}</Typography>
+                    <Box display="flex" alignItems={editMode ? 'flex-start' : 'center'} mb={2}>
+                      <Business sx={{ mr: 1, color: 'text.secondary', mt: editMode ? 1.5 : 0 }} />
+                      <Box flex={1}>
+                        <Typography variant="body2" color="text.secondary" mb={editMode ? 0.5 : 0}>Business Name</Typography>
+                        {editMode ? (
+                          <TextField
+                            fullWidth
+                            size="small"
+                            value={editFormData.businessName || ''}
+                            onChange={(e) => setEditFormData({ ...editFormData, businessName: e.target.value })}
+                            variant="outlined"
+                          />
+                        ) : (
+                          <Typography variant="body1" fontWeight="medium">{selectedBusiness.businessName}</Typography>
+                        )}
                       </Box>
                     </Box>
-                    <Box display="flex" alignItems="center" mb={1}>
-                      <Description sx={{ mr: 1, color: 'text.secondary' }} />
-                      <Box>
-                        <Typography variant="body2" color="text.secondary">Business Type</Typography>
-                        <Typography variant="body1">{selectedBusiness.selectedType}</Typography>
+                    <Box display="flex" alignItems={editMode ? 'flex-start' : 'center'} mb={2}>
+                      <Description sx={{ mr: 1, color: 'text.secondary', mt: editMode ? 1.5 : 0 }} />
+                      <Box flex={1}>
+                        <Typography variant="body2" color="text.secondary" mb={editMode ? 0.5 : 0}>Business Type</Typography>
+                        {editMode ? (
+                          <TextField
+                            fullWidth
+                            size="small"
+                            value={editFormData.selectedType || ''}
+                            onChange={(e) => setEditFormData({ ...editFormData, selectedType: e.target.value })}
+                            variant="outlined"
+                          />
+                        ) : (
+                          <Typography variant="body1">{selectedBusiness.selectedType}</Typography>
+                        )}
                       </Box>
                     </Box>
-                    <Box display="flex" alignItems="center" mb={1}>
-                      <Schedule sx={{ mr: 1, color: 'text.secondary' }} />
-                      <Box>
-                        <Typography variant="body2" color="text.secondary">Business Hours</Typography>
-                        <Typography variant="body1">{selectedBusiness.businessHours}</Typography>
+                    <Box display="flex" alignItems={editMode ? 'flex-start' : 'center'} mb={2}>
+                      <Schedule sx={{ mr: 1, color: 'text.secondary', mt: editMode ? 1.5 : 0 }} />
+                      <Box flex={1}>
+                        <Typography variant="body2" color="text.secondary" mb={editMode ? 0.5 : 0}>Business Hours</Typography>
+                        {editMode ? (
+                          <TextField
+                            fullWidth
+                            size="small"
+                            value={editFormData.businessHours || ''}
+                            onChange={(e) => setEditFormData({ ...editFormData, businessHours: e.target.value })}
+                            variant="outlined"
+                            placeholder="e.g., Mon-Fri 9AM-5PM"
+                          />
+                        ) : (
+                          <Typography variant="body1">{selectedBusiness.businessHours}</Typography>
+                        )}
                       </Box>
                     </Box>
-                    <Box display="flex" alignItems="center" mb={1}>
-                      <Description sx={{ mr: 1, color: 'text.secondary' }} />
-                      <Box>
-                        <Typography variant="body2" color="text.secondary">Permit Number</Typography>
-                        <Typography variant="body1" fontWeight="medium">{selectedBusiness.permitNumber}</Typography>
+                    <Box display="flex" alignItems={editMode ? 'flex-start' : 'center'} mb={1}>
+                      <Description sx={{ mr: 1, color: 'text.secondary', mt: editMode ? 1.5 : 0 }} />
+                      <Box flex={1}>
+                        <Typography variant="body2" color="text.secondary" mb={editMode ? 0.5 : 0}>Permit Number</Typography>
+                        {editMode ? (
+                          <TextField
+                            fullWidth
+                            size="small"
+                            value={editFormData.permitNumber || ''}
+                            onChange={(e) => setEditFormData({ ...editFormData, permitNumber: e.target.value })}
+                            variant="outlined"
+                          />
+                        ) : (
+                          <Typography variant="body1" fontWeight="medium">{selectedBusiness.permitNumber}</Typography>
+                        )}
                       </Box>
                     </Box>
                   </Box>
@@ -784,33 +1054,64 @@ const BusinessApprovals: React.FC<BusinessApprovalsProps> = ({ tab }) => {
                     Owner & Contact Information
                   </Typography>
                   <Box mb={2}>
-                    <Box display="flex" alignItems="center" mb={1}>
-                      <Person sx={{ mr: 1, color: 'text.secondary' }} />
-                      <Box>
-                        <Typography variant="body2" color="text.secondary">Business Owner</Typography>
-                        <Typography variant="body1" fontWeight="medium">{selectedBusiness.businessOwner}</Typography>
+                    <Box display="flex" alignItems={editMode ? 'flex-start' : 'center'} mb={2}>
+                      <Person sx={{ mr: 1, color: 'text.secondary', mt: editMode ? 1.5 : 0 }} />
+                      <Box flex={1}>
+                        <Typography variant="body2" color="text.secondary" mb={editMode ? 0.5 : 0}>Business Owner</Typography>
+                        {editMode ? (
+                          <TextField
+                            fullWidth
+                            size="small"
+                            value={editFormData.businessOwner || ''}
+                            onChange={(e) => setEditFormData({ ...editFormData, businessOwner: e.target.value })}
+                            variant="outlined"
+                          />
+                        ) : (
+                          <Typography variant="body1" fontWeight="medium">{selectedBusiness.businessOwner}</Typography>
+                        )}
                       </Box>
                     </Box>
-                    <Box display="flex" alignItems="center" mb={1}>
+                    <Box display="flex" alignItems="center" mb={2}>
                       <Email sx={{ mr: 1, color: 'text.secondary' }} />
                       <Box>
                         <Typography variant="body2" color="text.secondary">Email</Typography>
                         <Typography variant="body1">{selectedBusiness.userEmail}</Typography>
                       </Box>
                     </Box>
-                    <Box display="flex" alignItems="center" mb={1}>
-                      <Phone sx={{ mr: 1, color: 'text.secondary' }} />
-                      <Box>
-                        <Typography variant="body2" color="text.secondary">Primary Contact</Typography>
-                        <Typography variant="body1">{selectedBusiness.contactNumber}</Typography>
+                    <Box display="flex" alignItems={editMode ? 'flex-start' : 'center'} mb={2}>
+                      <Phone sx={{ mr: 1, color: 'text.secondary', mt: editMode ? 1.5 : 0 }} />
+                      <Box flex={1}>
+                        <Typography variant="body2" color="text.secondary" mb={editMode ? 0.5 : 0}>Primary Contact</Typography>
+                        {editMode ? (
+                          <TextField
+                            fullWidth
+                            size="small"
+                            value={editFormData.contactNumber || ''}
+                            onChange={(e) => setEditFormData({ ...editFormData, contactNumber: e.target.value })}
+                            variant="outlined"
+                          />
+                        ) : (
+                          <Typography variant="body1">{selectedBusiness.contactNumber}</Typography>
+                        )}
                       </Box>
                     </Box>
-                    {selectedBusiness.optionalContactNumber && (
-                      <Box display="flex" alignItems="center" mb={1}>
-                        <Phone sx={{ mr: 1, color: 'text.secondary' }} />
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">Alternative Contact</Typography>
-                          <Typography variant="body1">{selectedBusiness.optionalContactNumber}</Typography>
+                    {(selectedBusiness.optionalContactNumber || editMode) && (
+                      <Box display="flex" alignItems={editMode ? 'flex-start' : 'center'} mb={1}>
+                        <Phone sx={{ mr: 1, color: 'text.secondary', mt: editMode ? 1.5 : 0 }} />
+                        <Box flex={1}>
+                          <Typography variant="body2" color="text.secondary" mb={editMode ? 0.5 : 0}>Alternative Contact</Typography>
+                          {editMode ? (
+                            <TextField
+                              fullWidth
+                              size="small"
+                              value={editFormData.optionalContactNumber || ''}
+                              onChange={(e) => setEditFormData({ ...editFormData, optionalContactNumber: e.target.value })}
+                              variant="outlined"
+                              placeholder="Optional"
+                            />
+                          ) : (
+                            <Typography variant="body1">{selectedBusiness.optionalContactNumber || 'N/A'}</Typography>
+                          )}
                         </Box>
                       </Box>
                     )}
@@ -1273,48 +1574,44 @@ const BusinessApprovals: React.FC<BusinessApprovalsProps> = ({ tab }) => {
           )}
         </DialogContent>
         <DialogActions sx={{ p: 3, gap: 2 }}>
-          <Button 
-            onClick={() => {
-              if (rejectTimer) {
-                cancelRejection();
-              }
-              setDialogOpen(false);
-            }} 
-            disabled={processing}
-            variant="outlined"
-            sx={{
-              borderColor: '#999',
-              color: '#666',
-              textTransform: 'none',
-              px: 3,
-              py: 1,
-              borderRadius: 2,
-              '&:hover': {
-                borderColor: '#666',
-                bgcolor: 'rgba(0,0,0,0.05)',
-              },
-            }}
-          >
-            Close
-          </Button>
-          {selectedBusiness?.status === 'pending' && (
+          {editMode ? (
             <>
-              <Button
-                onClick={() => handleReject(selectedBusiness.id)}
-                variant="contained"
-                disabled={processing || !rejectionReason.trim() || (rejectingBusinessId === selectedBusiness.id && rejectCountdown > 0)}
+              <Button 
+                onClick={handleCancelEdit}
+                disabled={updating}
+                variant="outlined"
                 sx={{
-                  bgcolor: '#F44336',
+                  borderColor: '#999',
+                  color: '#666',
+                  textTransform: 'none',
+                  px: 3,
+                  py: 1,
+                  borderRadius: 2,
+                  '&:hover': {
+                    borderColor: '#666',
+                    bgcolor: 'rgba(0,0,0,0.05)',
+                  },
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveEdit}
+                variant="contained"
+                disabled={updating}
+                startIcon={updating ? <CircularProgress size={16} sx={{ color: 'inherit' }} /> : <Save />}
+                sx={{
+                  bgcolor: '#667eea',
                   color: '#fff',
                   textTransform: 'none',
                   px: 4,
                   py: 1.2,
                   borderRadius: 2,
                   fontWeight: 600,
-                  boxShadow: '0 4px 12px rgba(244, 67, 54, 0.3)',
+                  boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
                   '&:hover': {
-                    bgcolor: '#D32F2F',
-                    boxShadow: '0 6px 16px rgba(244, 67, 54, 0.4)',
+                    bgcolor: '#5568d3',
+                    boxShadow: '0 6px 16px rgba(102, 126, 234, 0.4)',
                   },
                   '&:disabled': {
                     bgcolor: '#ccc',
@@ -1322,43 +1619,119 @@ const BusinessApprovals: React.FC<BusinessApprovalsProps> = ({ tab }) => {
                   },
                 }}
               >
-                {processing ? <CircularProgress size={20} color="inherit" /> : (
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <Cancel sx={{ fontSize: 20 }} />
-                    {rejectingBusinessId === selectedBusiness.id && rejectCountdown > 0 ? `Rejecting... (${rejectCountdown}s)` : 'Reject'}
-                  </Box>
-                )}
+                {updating ? 'Saving...' : 'Save Changes'}
               </Button>
-              <Button
-                onClick={() => handleApprove(selectedBusiness.id)}
-                variant="contained"
-                disabled={processing}
+            </>
+          ) : (
+            <>
+              {selectedBusiness?.status === 'approved' && !editMode && (
+                <Button
+                  startIcon={<Edit />}
+                  onClick={handleEditClick}
+                  variant="outlined"
+                  size="small"
+                  color="primary"
+                  sx={{
+                    textTransform: 'none',
+                    px: 3,
+                    py: 1,
+                    borderRadius: 2,
+                  }}
+                >
+                  Edit
+                </Button>
+              )}
+              <Button 
+                onClick={() => {
+                  if (!editMode) {
+                    if (rejectTimer) {
+                      cancelRejection();
+                    }
+                    setDialogOpen(false);
+                  }
+                }} 
+                disabled={editMode}
+                variant="outlined"
+                size="small"
                 sx={{
-                  bgcolor: '#4CAF50',
-                  color: '#fff',
+                  borderColor: '#999',
+                  color: '#666',
                   textTransform: 'none',
-                  px: 4,
-                  py: 1.2,
+                  px: 3,
+                  py: 1,
                   borderRadius: 2,
-                  fontWeight: 600,
-                  boxShadow: '0 4px 12px rgba(76, 175, 80, 0.3)',
                   '&:hover': {
-                    bgcolor: '#45a049',
-                    boxShadow: '0 6px 16px rgba(76, 175, 80, 0.4)',
-                  },
-                  '&:disabled': {
-                    bgcolor: '#ccc',
-                    color: '#999',
+                    borderColor: '#666',
+                    bgcolor: 'rgba(0,0,0,0.05)',
                   },
                 }}
               >
-                {processing ? <CircularProgress size={20} color="inherit" /> : (
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <CheckCircle sx={{ fontSize: 20 }} />
-                    Approve
-                  </Box>
-                )}
+                Close
               </Button>
+              {selectedBusiness?.status === 'pending' && (
+                <>
+                  <Button
+                    onClick={() => handleReject(selectedBusiness.id)}
+                    variant="contained"
+                    disabled={processing || !rejectionReason.trim() || (rejectingBusinessId === selectedBusiness.id && rejectCountdown > 0)}
+                    sx={{
+                      bgcolor: '#F44336',
+                      color: '#fff',
+                      textTransform: 'none',
+                      px: 4,
+                      py: 1.2,
+                      borderRadius: 2,
+                      fontWeight: 600,
+                      boxShadow: '0 4px 12px rgba(244, 67, 54, 0.3)',
+                      '&:hover': {
+                        bgcolor: '#D32F2F',
+                        boxShadow: '0 6px 16px rgba(244, 67, 54, 0.4)',
+                      },
+                      '&:disabled': {
+                        bgcolor: '#ccc',
+                        color: '#999',
+                      },
+                    }}
+                  >
+                    {processing ? <CircularProgress size={20} color="inherit" /> : (
+                      <Box display="flex" alignItems="center" gap={1}>
+                        <Cancel sx={{ fontSize: 20 }} />
+                        {rejectingBusinessId === selectedBusiness.id && rejectCountdown > 0 ? `Rejecting... (${rejectCountdown}s)` : 'Reject'}
+                      </Box>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={() => handleApprove(selectedBusiness.id)}
+                    variant="contained"
+                    disabled={processing}
+                    sx={{
+                      bgcolor: '#4CAF50',
+                      color: '#fff',
+                      textTransform: 'none',
+                      px: 4,
+                      py: 1.2,
+                      borderRadius: 2,
+                      fontWeight: 600,
+                      boxShadow: '0 4px 12px rgba(76, 175, 80, 0.3)',
+                      '&:hover': {
+                        bgcolor: '#45a049',
+                        boxShadow: '0 6px 16px rgba(76, 175, 80, 0.4)',
+                      },
+                      '&:disabled': {
+                        bgcolor: '#ccc',
+                        color: '#999',
+                      },
+                    }}
+                  >
+                    {processing ? <CircularProgress size={20} color="inherit" /> : (
+                      <Box display="flex" alignItems="center" gap={1}>
+                        <CheckCircle sx={{ fontSize: 20 }} />
+                        Approve
+                      </Box>
+                    )}
+                  </Button>
+                </>
+              )}
             </>
           )}
         </DialogActions>

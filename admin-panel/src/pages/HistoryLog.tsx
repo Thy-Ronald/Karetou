@@ -111,7 +111,6 @@ const HistoryLog: React.FC = () => {
         } as HistoryLogEntry);
       });
 
-      console.log('Fetched history logs:', logs.length, logs);
       setHistoryLogs(logs);
     } catch (error) {
       console.error('Error fetching history logs:', error);

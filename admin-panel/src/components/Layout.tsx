@@ -18,6 +18,7 @@ import {
   Button,
   Tooltip,
   Collapse,
+  CircularProgress,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -42,6 +43,7 @@ const miniDrawerWidth = 72;
 const Layout: React.FC = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [drawerHovered, setDrawerHovered] = useState(false);
   const [businessMenuOpen, setBusinessMenuOpen] = useState(false);
   const [archiveMenuOpen, setArchiveMenuOpen] = useState(false);
@@ -59,17 +61,22 @@ const Layout: React.FC = () => {
 
   const handleLogoutConfirm = async () => {
     try {
+      setLoggingOut(true);
       await logout();
       navigate('/login');
     } catch (error) {
       console.error('Logout error:', error);
+      setLoggingOut(false);
     } finally {
       setLogoutDialogOpen(false);
+      setLoggingOut(false);
     }
   };
 
   const handleLogoutCancel = () => {
-    setLogoutDialogOpen(false);
+    if (!loggingOut) {
+      setLogoutDialogOpen(false);
+    }
   };
 
   // Define menu items based on user role
@@ -659,17 +666,30 @@ const Layout: React.FC = () => {
       </Box>
 
       {/* Logout Confirmation Dialog */}
-      <Dialog open={logoutDialogOpen} onClose={handleLogoutCancel}>
+      <Dialog open={logoutDialogOpen} onClose={handleLogoutCancel} disableEscapeKeyDown={loggingOut}>
         <DialogTitle>Confirm Logout</DialogTitle>
         <DialogContent>
-          <Typography>
-            Are you sure you want to logout from the Admin Panel?
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minHeight: 40 }}>
+            {loggingOut && (
+              <CircularProgress size={20} sx={{ color: '#667eea' }} />
+            )}
+            <Typography>
+              {loggingOut ? 'Logging out...' : 'Are you sure you want to logout from the Admin Panel?'}
+            </Typography>
+          </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleLogoutCancel}>Cancel</Button>
-          <Button onClick={handleLogoutConfirm} color="error" variant="contained">
-            Logout
+          <Button onClick={handleLogoutCancel} disabled={loggingOut}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleLogoutConfirm} 
+            color="error" 
+            variant="contained"
+            disabled={loggingOut}
+            startIcon={loggingOut ? <CircularProgress size={16} sx={{ color: 'inherit' }} /> : null}
+          >
+            {loggingOut ? 'Logging out...' : 'Logout'}
           </Button>
         </DialogActions>
       </Dialog>
