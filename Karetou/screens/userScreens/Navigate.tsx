@@ -1879,7 +1879,7 @@ const Navigate = () => {
       }
 
       const response = await fetch(
-        `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&mode=${googleMode}&key=YOUR_GOOGLE_API_KEY`,
+        `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&mode=${googleMode}&key=AIzaSyByXb-FgYHiNhVIsK00kM1jdXYr_OerV7Q`,
         { signal: controller.signal }
       );
 
