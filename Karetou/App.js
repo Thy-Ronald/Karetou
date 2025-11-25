@@ -118,9 +118,9 @@ const Navigation = () => {
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
     </GestureHandlerRootView>
   );
 }

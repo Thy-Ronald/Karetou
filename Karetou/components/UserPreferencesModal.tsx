@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Modal,
   TouchableOpacity,
@@ -28,10 +28,18 @@ const businessCategories = [
 interface UserPreferencesModalProps {
   visible: boolean;
   onClose: (preferences: string[]) => void;
+  initialPreferences?: string[];
+  isFilterMode?: boolean;
 }
 
-const UserPreferencesModal: React.FC<UserPreferencesModalProps> = ({ visible, onClose }) => {
+const UserPreferencesModal: React.FC<UserPreferencesModalProps> = ({ 
+  visible, 
+  onClose, 
+  initialPreferences = [], 
+  isFilterMode = false 
+}) => {
   const [selectedPreferences, setSelectedPreferences] = useState<string[]>([]);
+  const prevVisibleRef = useRef(false);
   const { spacing, fontSizes, iconSizes, borderRadius, getResponsiveWidth, getResponsiveHeight } = useResponsive();
   
   // Device size detection
@@ -46,12 +54,16 @@ const UserPreferencesModal: React.FC<UserPreferencesModalProps> = ({ visible, on
   const logoSizePercent = isSmallDevice ? 16 : isMediumDevice ? 20 : isTablet ? 30 : 22;
   const inputHeight = isSmallDevice ? 6 : isMediumDevice ? 6.5 : isTablet ? 8 : 7;
 
+  // Only initialize preferences when modal transitions from closed to open
   useEffect(() => {
-    if (visible) {
+    if (visible && !prevVisibleRef.current) {
+      // Modal just opened - initialize with current preferences
       console.log('🎯 UserPreferencesModal is now visible');
-      console.log('📋 Categories to display:', businessCategories);
+      console.log('📋 Initial preferences:', initialPreferences);
+      setSelectedPreferences(initialPreferences ? [...initialPreferences] : []);
     }
-  }, [visible]);
+    prevVisibleRef.current = visible;
+  }, [visible]); // Only depend on visible, not initialPreferences
 
   const togglePreference = (category: string) => {
     console.log('✅ Toggle preference:', category);
@@ -69,7 +81,13 @@ const UserPreferencesModal: React.FC<UserPreferencesModalProps> = ({ visible, on
   };
 
   const handleSkip = () => {
-    onClose([]);
+    if (isFilterMode) {
+      // In filter mode, cancel reverts to initial preferences (or just closes)
+      // We pass back initialPreferences so the parent state remains consistent
+      onClose(initialPreferences);
+    } else {
+      onClose([]);
+    }
   };
 
   // --- Styles ---
@@ -266,7 +284,7 @@ const UserPreferencesModal: React.FC<UserPreferencesModalProps> = ({ visible, on
                 onPress={handleSkip}
               >
                 <ResponsiveText size={isSmallDevice ? "sm" : isTablet ? "md" : "md"} weight="600" color="#666" style={styles.skipButtonText}>
-                  Skip for now
+                  {isFilterMode ? 'Cancel' : 'Skip for now'}
                 </ResponsiveText>
               </TouchableOpacity>
 
@@ -286,7 +304,7 @@ const UserPreferencesModal: React.FC<UserPreferencesModalProps> = ({ visible, on
                 >
                   <Ionicons name="checkmark-circle" size={iconSizes.md} color="#fff" />
                   <ResponsiveText size={isSmallDevice ? "sm" : isTablet ? "md" : "md"} weight="700" color="#fff" style={styles.saveButtonText}>
-                    Save Preferences
+                    {isFilterMode ? 'Apply' : 'Save Preferences'}
                   </ResponsiveText>
                 </LinearGradient>
               </TouchableOpacity>

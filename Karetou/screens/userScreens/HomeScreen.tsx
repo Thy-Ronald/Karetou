@@ -30,6 +30,7 @@ import NotificationService from '../../services/NotificationService';
 import * as Location from 'expo-location';
 import { useResponsive } from '../../hooks/useResponsive';
 import { ResponsiveText, ResponsiveView, ResponsiveCard, ResponsiveButton, ResponsiveImage } from '../../components';
+import UserPreferencesModal from '../../components/UserPreferencesModal';
 
 // Get responsive dimensions dynamically
 const getScreenDimensions = () => Dimensions.get('window');
@@ -232,6 +233,7 @@ const HomeScreen = () => {
   const [reviewLoading, setReviewLoading] = useState(false);
   const [businessRatings, setBusinessRatings] = useState<{ [businessId: string]: { average: string, count: number } }>({});
   const [userLocation, setUserLocation] = useState<string>('Silay City'); // Default fallback
+  const [userCoordinates, setUserCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
   const [userPoints, setUserPoints] = useState<number>(0);
   const [loyaltyPointsModalVisible, setLoyaltyPointsModalVisible] = useState(false);
   const [businessLoyaltyPoints, setBusinessLoyaltyPoints] = useState<any[]>([]);
@@ -245,6 +247,7 @@ const HomeScreen = () => {
   const [userPreferences, setUserPreferences] = useState<string[]>([]);
   const [allReviews, setAllReviews] = useState<any[]>([]);
   const [loadingReviews, setLoadingReviews] = useState(true);
+  const [preferencesModalVisible, setPreferencesModalVisible] = useState(false);
 
   // Get responsive values from hook for dynamic styles
   const { dimensions } = useResponsive();
@@ -1293,6 +1296,7 @@ const HomeScreen = () => {
       if (status !== 'granted') {
         console.log('❌ Location permission denied');
         setUserLocation('Silay City'); // Fallback to default
+        setUserCoordinates(null); // No coordinates available
         setLocationLoading(false);
         return;
       }
@@ -1305,6 +1309,12 @@ const HomeScreen = () => {
       });
 
       console.log('📍 Current position:', {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude
+      });
+
+      // Store user coordinates for distance calculations
+      setUserCoordinates({
         latitude: location.coords.latitude,
         longitude: location.coords.longitude
       });
@@ -1326,10 +1336,12 @@ const HomeScreen = () => {
       } else {
         console.log('⚠️ No address found for coordinates');
         setUserLocation('Silay City'); // Fallback
+        setUserCoordinates(null);
       }
     } catch (error) {
       console.error('❌ Error getting user location:', error);
       setUserLocation('Silay City'); // Fallback to default
+      setUserCoordinates(null);
     } finally {
       setLocationLoading(false);
     }
@@ -1396,6 +1408,20 @@ const HomeScreen = () => {
     } catch (error) {
       console.error('Error loading user preferences:', error);
     }
+  };
+
+  // Calculate distance between two coordinates using Haversine formula
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const toRad = (value: number) => (value * Math.PI) / 180;
+    const R = 6371; // Earth radius in km
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
   };
 
   // Apply preference-based filtering and sorting
@@ -1480,7 +1506,32 @@ const HomeScreen = () => {
       if (aExactMatch && !bExactMatch) return -1;
       if (!aExactMatch && bExactMatch) return 1;
       
-      // If both are exact matches or both are flexible matches, sort by rating
+      // If both are exact matches or both are flexible matches, sort by distance (if available), then by rating
+      if (userCoordinates) {
+        const aLocation = a.businessLocation;
+        const bLocation = b.businessLocation;
+        
+        if (aLocation && aLocation.latitude && aLocation.longitude && 
+            bLocation && bLocation.latitude && bLocation.longitude) {
+          const distanceA = calculateDistance(
+            userCoordinates.latitude,
+            userCoordinates.longitude,
+            aLocation.latitude,
+            aLocation.longitude
+          );
+          const distanceB = calculateDistance(
+            userCoordinates.latitude,
+            userCoordinates.longitude,
+            bLocation.latitude,
+            bLocation.longitude
+          );
+          
+          // Sort by distance (nearest first)
+          return distanceA - distanceB;
+        }
+      }
+      
+      // Fallback to rating if no location data
       const ratingA = parseFloat(a.rating || '0');
       const ratingB = parseFloat(b.rating || '0');
       return ratingB - ratingA;
@@ -1523,18 +1574,13 @@ const HomeScreen = () => {
         };
       });
       
-      // Apply preference-based filtering
+      // Apply preference-based filtering (this now includes distance sorting)
       const preferenceFiltered = applyPreferenceFilter(businesses.length > 0 ? businesses : fallbackSuggestedPlaces);
       
-      // Sort by rating (highest first) - initial sort based on business data rating
-      const sorted = [...preferenceFiltered].sort((a, b) => {
-        const ratingA = parseFloat(a.rating || '0');
-        const ratingB = parseFloat(b.rating || '0');
-        return ratingB - ratingA;
-      });
-      
+      // The applyPreferenceFilter already sorts by distance (nearest first) if user coordinates are available
+      // If no user coordinates, it falls back to rating sorting
       // Limit to 6 places for horizontal scroll
-      setSuggestedPlaces(sorted.slice(0, 6));
+      setSuggestedPlaces(preferenceFiltered.slice(0, 6));
       
       // Preload suggested places images
       const preloadPromises: Promise<void>[] = [];
@@ -1787,6 +1833,22 @@ const HomeScreen = () => {
     }
   }, [userPreferences]);
 
+  const handleSavePreferences = async (newPreferences: string[]) => {
+    if (!user?.uid) return;
+    
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        preferences: newPreferences
+      });
+      setPreferencesModalVisible(false);
+      // The listener will pick up the changes and trigger the useEffect to reload suggestions
+    } catch (error) {
+      console.error('Error saving preferences:', error);
+      Alert.alert('Error', 'Failed to save preferences. Please try again.');
+    }
+  };
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     Promise.all([getUserLocation(), loadSavedBusinesses(), loadUserPreferences(), loadSuggestedPlaces(), loadPlacesToVisit(), loadPromosAndDeals(), loadAllReviews(), loadUserPoints()]).finally(() => {
@@ -2024,9 +2086,17 @@ const HomeScreen = () => {
 
           {/* --- Suggested Places --- */}
           <ResponsiveView style={styles.section}>
-            <ResponsiveText size="lg" weight="bold" color={theme === 'dark' ? '#FFF' : '#000'} style={styles.sectionTitle}>
-              Suggested places
-            </ResponsiveText>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingHorizontal: isSmallScreen ? spacing.md : spacing.lg }}>
+              <ResponsiveText size="lg" weight="bold" color={theme === 'dark' ? '#FFF' : '#000'} style={{ marginBottom: 0 }}>
+                Suggested places
+              </ResponsiveText>
+              <TouchableOpacity 
+                onPress={() => setPreferencesModalVisible(true)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="options-outline" size={iconSizes.lg} color={theme === 'dark' ? '#FFF' : '#667eea'} />
+              </TouchableOpacity>
+            </View>
             {loadingSuggested ? (
               <ResponsiveView style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#667eea" />
@@ -2798,6 +2868,14 @@ const HomeScreen = () => {
           </View>
           </View>
         </Modal>
+
+        {/* User Preferences Modal */}
+        <UserPreferencesModal
+          visible={preferencesModalVisible}
+          onClose={handleSavePreferences}
+          initialPreferences={userPreferences}
+          isFilterMode={true}
+        />
     </LinearGradient>
   );
 };

@@ -542,11 +542,11 @@ const PromotionsScreen = () => {
               setShowBusinessDropdown(false);
               setShowDateDropdown(false);
             }}
-          >
-            <KeyboardAvoidingView 
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
               style={styles.modalKeyboardView}
-            >
+          >
               <View 
                 style={[
                   styles.modalContent,
@@ -556,22 +556,22 @@ const PromotionsScreen = () => {
                   }
                 ]}
               >
-                <View style={styles.modalHeader}>
-                  <ResponsiveText size="lg" weight="bold" color="#333" style={styles.modalTitle}>
-                    Create New Promotion
-                  </ResponsiveText>
-                  <TouchableOpacity 
+              <View style={styles.modalHeader}>
+                <ResponsiveText size="lg" weight="bold" color="#333" style={styles.modalTitle}>
+                  Create New Promotion
+                </ResponsiveText>
+                <TouchableOpacity 
                     onPress={() => {
                       setModalVisible(false);
                       setShowBusinessDropdown(false);
                       setShowDateDropdown(false);
                     }}
-                    style={styles.closeButton}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Ionicons name="close" size={iconSizes.lg} color="#333" />
-                  </TouchableOpacity>
-                </View>
+                  style={styles.closeButton}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons name="close" size={iconSizes.lg} color="#333" />
+                </TouchableOpacity>
+              </View>
 
                 <ScrollView 
                   style={styles.formContainer}
@@ -617,30 +617,30 @@ const PromotionsScreen = () => {
                         nestedScrollEnabled={true}
                         showsVerticalScrollIndicator={true}
                       >
-                        {userBusinesses.map((business) => (
-                          <TouchableOpacity
-                            key={business.id}
-                            style={styles.dropdownItem}
-                            onPress={() => {
-                              setSelectedBusiness(business);
-                              setFormData(prev => ({
-                                ...prev,
-                                businessId: business.id,
-                                businessName: business.businessName,
-                                businessType: business.selectedType || business.businessType || '',
-                              }));
-                              setShowBusinessDropdown(false);
-                            }}
-                            activeOpacity={0.7}
-                          >
-                            <ResponsiveText size="md" weight="600" color="#333" style={styles.dropdownItemText}>
-                              {business.businessName}
-                            </ResponsiveText>
-                            <ResponsiveText size="sm" color="#666" style={styles.dropdownItemType}>
-                              {business.selectedType || business.businessType}
-                            </ResponsiveText>
-                          </TouchableOpacity>
-                        ))}
+                      {userBusinesses.map((business) => (
+                        <TouchableOpacity
+                          key={business.id}
+                          style={styles.dropdownItem}
+                          onPress={() => {
+                            setSelectedBusiness(business);
+                            setFormData(prev => ({
+                              ...prev,
+                              businessId: business.id,
+                              businessName: business.businessName,
+                              businessType: business.selectedType || business.businessType || '',
+                            }));
+                            setShowBusinessDropdown(false);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <ResponsiveText size="md" weight="600" color="#333" style={styles.dropdownItemText}>
+                            {business.businessName}
+                          </ResponsiveText>
+                          <ResponsiveText size="sm" color="#666" style={styles.dropdownItemType}>
+                            {business.selectedType || business.businessType}
+                          </ResponsiveText>
+                        </TouchableOpacity>
+                      ))}
                       </ScrollView>
                     </View>
                   )}
@@ -771,39 +771,39 @@ const PromotionsScreen = () => {
                     }}
                   />
                 </View>
-                </ScrollView>
+              </ScrollView>
 
-                <View style={styles.modalActions}>
-                  <TouchableOpacity 
-                    style={styles.cancelButton}
+              <View style={styles.modalActions}>
+                <TouchableOpacity 
+                  style={styles.cancelButton}
                     onPress={() => {
                       setModalVisible(false);
                       setShowBusinessDropdown(false);
                       setShowDateDropdown(false);
                     }}
-                    activeOpacity={0.7}
-                  >
-                    <ResponsiveText size="md" weight="600" color="#666" style={styles.cancelButtonText}>
-                      Cancel
+                  activeOpacity={0.7}
+                >
+                  <ResponsiveText size="md" weight="600" color="#666" style={styles.cancelButtonText}>
+                    Cancel
+                  </ResponsiveText>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.createPromoButton}
+                  onPress={handleCreatePromotion}
+                  disabled={creating}
+                  activeOpacity={0.8}
+                >
+                  {creating ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <ResponsiveText size="md" weight="600" color="#fff" style={styles.createPromoButtonText}>
+                      Create Promotion
                     </ResponsiveText>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={styles.createPromoButton}
-                    onPress={handleCreatePromotion}
-                    disabled={creating}
-                    activeOpacity={0.8}
-                  >
-                    {creating ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <ResponsiveText size="md" weight="600" color="#fff" style={styles.createPromoButtonText}>
-                        Create Promotion
-                      </ResponsiveText>
-                    )}
-                  </TouchableOpacity>
-                </View>
+                  )}
+                </TouchableOpacity>
               </View>
-            </KeyboardAvoidingView>
+            </View>
+          </KeyboardAvoidingView>
           </TouchableOpacity>
         </Modal>
       </SafeAreaView>
