@@ -1404,54 +1404,86 @@ const HomeScreen = () => {
       return places; // No preferences set, return all places
     }
 
+    // Normalize strings for comparison (trim, lowercase)
+    const normalizeString = (str: string) => str.trim().toLowerCase();
+    
+    // Normalize user preferences once
+    const normalizedPreferences = userPreferences.map(normalizeString);
+
     // Filter places to only show those matching user preferences
     const filtered = places.filter((place) => {
-      const placeCategories = place.categories || [];
-      const placeBusinessType = place.businessType || '';
+      const placeCategories = Array.isArray(place.categories) ? place.categories : 
+                             (place.categories ? [place.categories] : []);
+      const placeBusinessType = place.businessType || place.selectedType || '';
       
-      // Check if any of the place's categories or business type match user preferences
-      const categoryMatch = placeCategories.some((cat: string) => 
-        userPreferences.some((pref: string) => 
-          cat.toLowerCase().includes(pref.toLowerCase()) || 
-          pref.toLowerCase().includes(cat.toLowerCase())
+      // Normalize place categories
+      const normalizedPlaceCategories = placeCategories.map((cat: string) => normalizeString(cat));
+      const normalizedBusinessType = normalizeString(placeBusinessType);
+      
+      // Check if any of the place's categories exactly match user preferences
+      const categoryMatch = normalizedPlaceCategories.some((cat: string) => 
+        normalizedPreferences.includes(cat)
+      );
+      
+      // Check if business type matches any user preference (exact match)
+      const typeMatch = normalizedPreferences.includes(normalizedBusinessType);
+      
+      // Also check if any category contains or is contained by a preference (flexible matching)
+      const flexibleCategoryMatch = normalizedPlaceCategories.some((cat: string) => 
+        normalizedPreferences.some((pref: string) => 
+          cat.includes(pref) || pref.includes(cat)
         )
       );
       
-      const typeMatch = userPreferences.some((pref: string) => 
-        placeBusinessType.toLowerCase().includes(pref.toLowerCase()) ||
-        pref.toLowerCase().includes(placeBusinessType.toLowerCase())
-      );
+      // Check if business type is related to any preference
+      const flexibleTypeMatch = normalizedPreferences.some((pref: string) => {
+        // Map business types to related categories
+        const typeToCategoryMap: { [key: string]: string[] } = {
+          'coffee shop': ['modern/minimalist cafés', 'heritage cafés'],
+          'restaurant': ['korean bbq', 'budget-friendly eats', 'fine dining', 'seafoods'],
+          'tourist spot': ['historical landmarks', 'nature spots', 'amusement']
+        };
+        
+        const relatedCategories = typeToCategoryMap[normalizedBusinessType] || [];
+        return relatedCategories.some(cat => cat.includes(pref) || pref.includes(cat));
+      });
       
-      return categoryMatch || typeMatch;
+      return categoryMatch || typeMatch || flexibleCategoryMatch || flexibleTypeMatch;
     });
 
     // If no matches found, return all places (fallback)
     if (filtered.length === 0) {
+      console.log('⚠️ No places match user preferences, showing all places');
       return places;
     }
 
-    // Sort places: preferred categories first, then others
+    console.log(`✅ Filtered ${filtered.length} places matching user preferences out of ${places.length} total`);
+
+    // Sort places: exact matches first, then flexible matches, then by rating
     return filtered.sort((a, b) => {
-      // Check if any of the business's categories match user preferences
-      const aCategories = a.categories || [];
-      const bCategories = b.categories || [];
+      const aCategories = Array.isArray(a.categories) ? a.categories : (a.categories ? [a.categories] : []);
+      const bCategories = Array.isArray(b.categories) ? b.categories : (b.categories ? [b.categories] : []);
       
-      const aMatches = aCategories.some((cat: string) => 
-        userPreferences.some((pref: string) => 
-          cat.toLowerCase().includes(pref.toLowerCase()) || 
-          pref.toLowerCase().includes(cat.toLowerCase())
-        )
-      );
-      const bMatches = bCategories.some((cat: string) => 
-        userPreferences.some((pref: string) => 
-          cat.toLowerCase().includes(pref.toLowerCase()) || 
-          pref.toLowerCase().includes(cat.toLowerCase())
-        )
-      );
+      const aBusinessType = normalizeString(a.businessType || a.selectedType || '');
+      const bBusinessType = normalizeString(b.businessType || b.selectedType || '');
       
-      if (aMatches && !bMatches) return -1;
-      if (!aMatches && bMatches) return 1;
-      return 0;
+      // Check for exact category matches
+      const aExactMatch = aCategories.some((cat: string) => 
+        normalizedPreferences.includes(normalizeString(cat))
+      ) || normalizedPreferences.includes(aBusinessType);
+      
+      const bExactMatch = bCategories.some((cat: string) => 
+        normalizedPreferences.includes(normalizeString(cat))
+      ) || normalizedPreferences.includes(bBusinessType);
+      
+      // Prioritize exact matches
+      if (aExactMatch && !bExactMatch) return -1;
+      if (!aExactMatch && bExactMatch) return 1;
+      
+      // If both are exact matches or both are flexible matches, sort by rating
+      const ratingA = parseFloat(a.rating || '0');
+      const ratingB = parseFloat(b.rating || '0');
+      return ratingB - ratingA;
     });
   };
 
@@ -1745,6 +1777,15 @@ const HomeScreen = () => {
     loadPromosAndDeals();
     loadAllReviews(); // Load all reviews
   }, []);
+
+  // Reload suggested places when user preferences change
+  useEffect(() => {
+    if (user?.uid) {
+      console.log('🔄 User preferences changed, reloading suggested places...', userPreferences);
+      loadSuggestedPlaces();
+      loadPlacesToVisit();
+    }
+  }, [userPreferences]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);

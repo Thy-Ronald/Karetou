@@ -34,6 +34,7 @@ const businessCategories = [
   'Heritage Cafés',
   'Nature Spots',
   'Amusement',
+  'Seafoods',
 ];
 
 const RegisterBusinessScreen = () => {

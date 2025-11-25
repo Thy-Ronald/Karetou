@@ -22,6 +22,7 @@ const businessCategories = [
   'Heritage Cafés',
   'Nature Spots',
   'Amusement',
+  'Seafoods',
 ];
 
 interface UserPreferencesModalProps {
