@@ -1,7 +1,12 @@
 import React from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
+import { enableScreens } from 'react-native-screens';
+
+// Enable screens for better performance
+enableScreens();
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginScreen from './screens/userScreens/Login';
 import SignupScreen from './screens/userScreens/SignupScreen';
@@ -112,9 +117,11 @@ const Navigation = () => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }
 

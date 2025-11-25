@@ -143,6 +143,7 @@ const PromotionsScreen = () => {
   const darkGradient = ['#232526', '#414345'] as const;
   
   const isSmallScreen = dimensions.width < 360;
+  const isMediumScreen = dimensions.width < 600;
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -528,35 +529,68 @@ const PromotionsScreen = () => {
           animationType="slide"
           transparent={true}
           visible={modalVisible}
-          onRequestClose={() => setModalVisible(false)}
+          onRequestClose={() => {
+            setModalVisible(false);
+            setShowBusinessDropdown(false);
+            setShowDateDropdown(false);
+          }}
         >
-          <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          <TouchableOpacity 
             style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => {
+              setShowBusinessDropdown(false);
+              setShowDateDropdown(false);
+            }}
           >
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <ResponsiveText size="lg" weight="bold" color="#333" style={styles.modalTitle}>
-                  Create New Promotion
-                </ResponsiveText>
-                <TouchableOpacity 
-                  onPress={() => setModalVisible(false)}
-                  style={styles.closeButton}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Ionicons name="close" size={iconSizes.lg} color="#333" />
-                </TouchableOpacity>
-              </View>
+            <KeyboardAvoidingView 
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={styles.modalKeyboardView}
+            >
+              <View 
+                style={[
+                  styles.modalContent,
+                  {
+                    width: isMediumScreen ? '95%' : '90%',
+                    maxWidth: isMediumScreen ? undefined : 600,
+                  }
+                ]}
+              >
+                <View style={styles.modalHeader}>
+                  <ResponsiveText size="lg" weight="bold" color="#333" style={styles.modalTitle}>
+                    Create New Promotion
+                  </ResponsiveText>
+                  <TouchableOpacity 
+                    onPress={() => {
+                      setModalVisible(false);
+                      setShowBusinessDropdown(false);
+                      setShowDateDropdown(false);
+                    }}
+                    style={styles.closeButton}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons name="close" size={iconSizes.lg} color="#333" />
+                  </TouchableOpacity>
+                </View>
 
-              <ScrollView style={styles.formContainer}>
+                <ScrollView 
+                  style={styles.formContainer}
+                  contentContainerStyle={styles.formContentContainer}
+                  showsVerticalScrollIndicator={true}
+                  keyboardShouldPersistTaps="handled"
+                  nestedScrollEnabled={true}
+                >
                 {/* Business Selection */}
-                <View style={styles.inputGroup}>
+                <View style={[styles.inputGroup, showBusinessDropdown && styles.inputGroupExpanded]}>
                   <ResponsiveText size="md" weight="600" color="#333" style={styles.inputLabel}>
                     Select Business *
                   </ResponsiveText>
                   <TouchableOpacity
                     style={[styles.textInput, styles.dropdownButton]}
-                    onPress={() => setShowBusinessDropdown(!showBusinessDropdown)}
+                    onPress={() => {
+                      setShowBusinessDropdown(!showBusinessDropdown);
+                      setShowDateDropdown(false);
+                    }}
                     activeOpacity={0.7}
                   >
                     <ResponsiveText 
@@ -570,38 +604,44 @@ const PromotionsScreen = () => {
                     </ResponsiveText>
                     <Ionicons 
                       name={showBusinessDropdown ? "chevron-up" : "chevron-down"} 
-                      size={iconSizes.lg} 
+                      size={iconSizes.md} 
                       color="#666" 
                     />
                   </TouchableOpacity>
                   
                   {/* Business Dropdown */}
-                  {showBusinessDropdown && (
+                  {showBusinessDropdown && userBusinesses.length > 0 && (
                     <View style={styles.dropdownList}>
-                      {userBusinesses.map((business) => (
-                        <TouchableOpacity
-                          key={business.id}
-                          style={styles.dropdownItem}
-                          onPress={() => {
-                            setSelectedBusiness(business);
-                            setFormData(prev => ({
-                              ...prev,
-                              businessId: business.id,
-                              businessName: business.businessName,
-                              businessType: business.selectedType || business.businessType || '',
-                            }));
-                            setShowBusinessDropdown(false);
-                          }}
-                          activeOpacity={0.7}
-                        >
-                          <ResponsiveText size="md" weight="600" color="#333" style={styles.dropdownItemText}>
-                            {business.businessName}
-                          </ResponsiveText>
-                          <ResponsiveText size="sm" color="#666" style={styles.dropdownItemType}>
-                            {business.selectedType || business.businessType}
-                          </ResponsiveText>
-                        </TouchableOpacity>
-                      ))}
+                      <ScrollView 
+                        style={styles.dropdownScrollView}
+                        nestedScrollEnabled={true}
+                        showsVerticalScrollIndicator={true}
+                      >
+                        {userBusinesses.map((business) => (
+                          <TouchableOpacity
+                            key={business.id}
+                            style={styles.dropdownItem}
+                            onPress={() => {
+                              setSelectedBusiness(business);
+                              setFormData(prev => ({
+                                ...prev,
+                                businessId: business.id,
+                                businessName: business.businessName,
+                                businessType: business.selectedType || business.businessType || '',
+                              }));
+                              setShowBusinessDropdown(false);
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <ResponsiveText size="md" weight="600" color="#333" style={styles.dropdownItemText}>
+                              {business.businessName}
+                            </ResponsiveText>
+                            <ResponsiveText size="sm" color="#666" style={styles.dropdownItemType}>
+                              {business.selectedType || business.businessType}
+                            </ResponsiveText>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
                     </View>
                   )}
                 </View>
@@ -633,17 +673,24 @@ const PromotionsScreen = () => {
                     onChangeText={(text) => setFormData(prev => ({ ...prev, title: text }))}
                     placeholder="e.g., 20% OFF Coffee"
                     placeholderTextColor="#999"
+                    onFocus={() => {
+                      setShowBusinessDropdown(false);
+                      setShowDateDropdown(false);
+                    }}
                   />
                 </View>
 
                 {/* Valid Until moved before Description */}
-                <View style={styles.inputGroup}>
+                <View style={[styles.inputGroup, showDateDropdown && styles.inputGroupExpanded]}>
                   <ResponsiveText size="md" weight="600" color="#333" style={styles.inputLabel}>
                     Valid Until *
                   </ResponsiveText>
                   <TouchableOpacity
                     style={[styles.textInput, styles.dateInput]}
-                    onPress={() => setShowDateDropdown(prev => !prev)}
+                    onPress={() => {
+                      setShowDateDropdown(!showDateDropdown);
+                      setShowBusinessDropdown(false);
+                    }}
                     activeOpacity={0.7}
                   >
                     <ResponsiveText 
@@ -659,8 +706,12 @@ const PromotionsScreen = () => {
                   {/* Date Dropdown List */}
                   {showDateDropdown && (
                     <View style={styles.dropdownList}>
-                      <ScrollView style={{ maxHeight: 200 }}>
-                        {futureDates.map(dateStr => {
+                      <ScrollView 
+                        style={styles.dropdownScrollView}
+                        nestedScrollEnabled={true}
+                        showsVerticalScrollIndicator={true}
+                      >
+                        {futureDates.slice(0, 90).map(dateStr => {
                           const display = new Date(dateStr).toLocaleDateString();
                           return (
                             <TouchableOpacity
@@ -694,6 +745,10 @@ const PromotionsScreen = () => {
                     onChangeText={(text) => setFormData(prev => ({ ...prev, discount: text }))}
                     placeholder="e.g., 20%, BOGO, FREE"
                     placeholderTextColor="#999"
+                    onFocus={() => {
+                      setShowBusinessDropdown(false);
+                      setShowDateDropdown(false);
+                    }}
                   />
                 </View>
 
@@ -710,37 +765,46 @@ const PromotionsScreen = () => {
                     placeholderTextColor="#999"
                     multiline
                     numberOfLines={3}
+                    onFocus={() => {
+                      setShowBusinessDropdown(false);
+                      setShowDateDropdown(false);
+                    }}
                   />
                 </View>
-              </ScrollView>
+                </ScrollView>
 
-              <View style={styles.modalActions}>
-                <TouchableOpacity 
-                  style={styles.cancelButton}
-                  onPress={() => setModalVisible(false)}
-                  activeOpacity={0.7}
-                >
-                  <ResponsiveText size="md" weight="600" color="#666" style={styles.cancelButtonText}>
-                    Cancel
-                  </ResponsiveText>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={styles.createPromoButton}
-                  onPress={handleCreatePromotion}
-                  disabled={creating}
-                  activeOpacity={0.8}
-                >
-                  {creating ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <ResponsiveText size="md" weight="600" color="#fff" style={styles.createPromoButtonText}>
-                      Create Promotion
+                <View style={styles.modalActions}>
+                  <TouchableOpacity 
+                    style={styles.cancelButton}
+                    onPress={() => {
+                      setModalVisible(false);
+                      setShowBusinessDropdown(false);
+                      setShowDateDropdown(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <ResponsiveText size="md" weight="600" color="#666" style={styles.cancelButtonText}>
+                      Cancel
                     </ResponsiveText>
-                  )}
-                </TouchableOpacity>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.createPromoButton}
+                    onPress={handleCreatePromotion}
+                    disabled={creating}
+                    activeOpacity={0.8}
+                  >
+                    {creating ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <ResponsiveText size="md" weight="600" color="#fff" style={styles.createPromoButtonText}>
+                        Create Promotion
+                      </ResponsiveText>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
-          </KeyboardAvoidingView>
+            </KeyboardAvoidingView>
+          </TouchableOpacity>
         </Modal>
       </SafeAreaView>
     </LinearGradient>
@@ -914,25 +978,40 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  modalKeyboardView: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   modalContent: {
     backgroundColor: '#fff',
     borderRadius: 20,
-    width: '90%',
-    maxWidth: 500,
-    maxHeight: '80%',
-    paddingBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    overflow: 'hidden',
+    maxHeight: '88%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '5%',
-    minHeight: 60,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    minHeight: 56,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
+    flexShrink: 0,
   },
   modalTitle: {
     flex: 1,
+    paddingRight: 10,
   },
   closeButton: {
     padding: 5,
@@ -942,42 +1021,63 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   formContainer: {
-    padding: '5%',
-    maxHeight: '50%',
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  formContentContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 20,
   },
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: 16,
+    position: 'relative',
+    zIndex: 1,
+  },
+  inputGroupExpanded: {
+    zIndex: 10,
+    marginBottom: 210,
   },
   inputLabel: {
-    marginBottom: 8,
+    marginBottom: 6,
   },
   textInput: {
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 10,
     padding: 12,
-    minHeight: 48,
-    fontSize: 16,
+    minHeight: 46,
+    fontSize: 15,
     backgroundColor: '#f9f9f9',
+    color: '#333',
   },
   textArea: {
-    minHeight: 80,
+    minHeight: 90,
+    maxHeight: 140,
     textAlignVertical: 'top',
+    paddingTop: 12,
   },
   disabledInput: {
     backgroundColor: '#f5f5f5',
     borderColor: '#ddd',
+    padding: 12,
   },
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: '5%',
-    gap: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    backgroundColor: '#fff',
+    flexShrink: 0,
   },
   cancelButton: {
     flex: 1,
-    padding: 15,
-    minHeight: 50,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    minHeight: 48,
     backgroundColor: '#f0f0f0',
     borderRadius: 10,
     alignItems: 'center',
@@ -988,12 +1088,21 @@ const styles = StyleSheet.create({
   },
   createPromoButton: {
     flex: 1,
-    padding: 15,
-    minHeight: 50,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    minHeight: 48,
     backgroundColor: '#667eea',
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#667eea',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 3,
   },
   createPromoButtonText: {
     color: '#fff',
@@ -1002,8 +1111,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingRight: 15,
-    minHeight: 48,
+    paddingRight: 12,
+    minHeight: 46,
   },
   dropdownText: {
     flex: 1,
@@ -1014,18 +1123,35 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   dropdownList: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
     backgroundColor: '#fff',
     borderRadius: 10,
-    marginTop: 5,
+    marginTop: 8,
     borderWidth: 1,
     borderColor: '#ddd',
     maxHeight: 200,
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  dropdownScrollView: {
+    maxHeight: 200,
   },
   dropdownItem: {
-    padding: 15,
-    minHeight: 50,
+    padding: 12,
+    minHeight: 46,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
+    justifyContent: 'center',
   },
   dropdownItemText: {
     // Styles handled by ResponsiveText
@@ -1046,7 +1172,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    minHeight: 48,
+    minHeight: 46,
   },
   dateText: {
     flex: 1,
