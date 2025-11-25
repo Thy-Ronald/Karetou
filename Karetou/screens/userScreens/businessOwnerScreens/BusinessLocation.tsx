@@ -18,7 +18,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -711,6 +711,7 @@ const BusinessLocationScreen = () => {
             <MapView
               ref={mapRef}
               style={styles.map}
+              provider={PROVIDER_GOOGLE}
               initialRegion={selectedLocation || currentLocation || {
                 latitude: 10.6407,
                 longitude: 122.9689,
@@ -720,6 +721,19 @@ const BusinessLocationScreen = () => {
               onPress={handleMapPress}
               showsUserLocation={true}
               showsMyLocationButton={false}
+              loadingEnabled={true}
+              loadingIndicatorColor="#667eea"
+              onMapReady={() => {
+                console.log('✅ BusinessLocation Map ready');
+              }}
+              onError={(error) => {
+                console.error('❌ BusinessLocation Map error:', error);
+                Alert.alert(
+                  'Map Error',
+                  'There was an error loading the map. Please check your internet connection and ensure the Google Maps API key is properly configured.',
+                  [{ text: 'OK' }]
+                );
+              }}
             >
               {selectedLocation && (
                 <Marker

@@ -3187,8 +3187,17 @@ const Navigate = () => {
             }}
             showsUserLocation={true}
             showsMyLocationButton={false}
-              onMapReady={() => setMapReady(true)}
-            >
+            onMapReady={() => {
+              console.log('✅ Map ready');
+              setMapReady(true);
+            }}
+            onError={(error) => {
+              console.error('❌ Map error:', error);
+              Alert.alert('Map Error', 'There was an error loading the map. Please check your internet connection and try again.');
+            }}
+            loadingEnabled={true}
+            loadingIndicatorColor="#667eea"
+          >
 
 
               {/* Business markers - keep visible but dimmed during navigation, exclude destination when navigating */}
