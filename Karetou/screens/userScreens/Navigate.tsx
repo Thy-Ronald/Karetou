@@ -16,7 +16,7 @@ import {
   Linking,
   ScrollView,
 } from 'react-native';
-import MapView, { Marker, Polyline, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Polyline, Circle } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
@@ -1005,20 +1005,46 @@ const Navigate = () => {
       backgroundColor: '#4B50E6',
     },
     destinationMarker: {
-      backgroundColor: '#FF3B30',
-      borderRadius: 35,
-      padding: spacing.md,
-      borderWidth: 5,
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      flexDirection: 'column',
+      width: 'auto',
+      height: 'auto',
+    },
+    destinationMarkerHead: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: '#EA4335',
+      borderWidth: 3,
       borderColor: '#fff',
-      elevation: 10,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.5,
-      shadowRadius: 6,
       alignItems: 'center',
       justifyContent: 'center',
-      width: 70,
-      height: 70,
+      elevation: 8,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.4,
+      shadowRadius: 5,
+      zIndex: 2,
+    },
+    destinationMarkerPoint: {
+      width: 0,
+      height: 0,
+      backgroundColor: 'transparent',
+      borderStyle: 'solid',
+      borderLeftWidth: 6,
+      borderRightWidth: 6,
+      borderTopWidth: 12,
+      borderLeftColor: 'transparent',
+      borderRightColor: 'transparent',
+      borderTopColor: '#EA4335',
+      alignSelf: 'center',
+      zIndex: 1,
+      elevation: 6,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 3,
     },
     businessMarkerImage: {
       // Width, height, and borderRadius are set dynamically in component for Android compatibility
@@ -1628,12 +1654,12 @@ const Navigate = () => {
         [destination.longitude, destination.latitude]
       ];
 
-      // Add timeout to prevent hanging
+      // Add timeout to prevent hanging - reduced to 8 seconds for faster fallback
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
-        console.warn(`⏱️ Request timeout after 15 seconds (attempt ${retryCount + 1})`);
+        console.warn(`⏱️ Request timeout after 8 seconds (attempt ${retryCount + 1})`);
         controller.abort();
-      }, 15000); // 15 second timeout (increased from 8 seconds)
+      }, 8000); // 8 second timeout for faster fallback
 
       let response;
       try {
@@ -1810,30 +1836,36 @@ const Navigate = () => {
       const isAbortError = error?.name === 'AbortError' || error?.message?.includes('Aborted');
       const errorType = isAbortError ? 'timeout/abort' : 'network/API';
       
+      // Only log error if not a timeout (timeouts are expected and will fallback gracefully)
+      if (!isAbortError) {
       console.error(`Error fetching directions from OpenRouteService (attempt ${retryCount + 1}): [${errorType}]`, error?.message || error);
+      }
       
-      // Retry up to 2 times with exponential backoff
-      if (retryCount < 2) {
-        const retryDelay = isAbortError ? 2000 * (retryCount + 1) : 1000 * (retryCount + 1);
+      // Skip retries for timeout errors - they usually indicate service issues
+      // Only retry for network errors (not timeouts)
+      if (!isAbortError && retryCount < 1) {
+        const retryDelay = 1000;
         console.log(`🔄 Retrying OpenRouteService request (attempt ${retryCount + 2}) after ${retryDelay}ms...`);
         
-        // Wait before retrying (longer delay for abort errors)
         await new Promise(resolve => setTimeout(resolve, retryDelay));
         
         try {
           return await getRouteFromORS(origin, destination, mode, retryCount + 1);
         } catch (retryError: any) {
           const retryIsAbort = retryError?.name === 'AbortError' || retryError?.message?.includes('Aborted');
-          console.error(`Retry ${retryCount + 2} also failed [${retryIsAbort ? 'timeout/abort' : 'network/API'}]:`, retryError?.message || retryError);
+          if (!retryIsAbort) {
+            console.error(`Retry ${retryCount + 2} also failed [network/API]:`, retryError?.message || retryError);
+          }
           // Continue to fallback below
         }
       }
       
-      // All retries failed, try alternative approach
-      console.log('💡 Alternative routing services (Google, MapBox) are available but require API key setup');
-      
-      // Create a better fallback route with intermediate waypoints to simulate road following
-      console.warn('🚨 OpenRouteService failed after all retries, creating estimated route with waypoints');
+      // All retries failed or timeout occurred, fallback immediately
+      if (isAbortError) {
+        console.log('⏱️ OpenRouteService timeout - using fallback route');
+      } else {
+        console.warn('🚨 OpenRouteService failed - using fallback route');
+      }
       const fallbackResult = calculateStraightLineDistance(origin, destination, mode);
       const fallbackTrafficInfo = generateTrafficInsights(fallbackResult.distance, fallbackResult.duration, mode);
       
@@ -3178,7 +3210,6 @@ const Navigate = () => {
           <MapView
             ref={mapRef}
             style={styles.map}
-            provider={PROVIDER_GOOGLE}
             initialRegion={{
                 latitude: cachedLocation?.coords.latitude || location?.coords.latitude || 10.7989,
                 longitude: cachedLocation?.coords.longitude || location?.coords.longitude || 122.9744,
@@ -3191,19 +3222,13 @@ const Navigate = () => {
               console.log('✅ Map ready');
               setMapReady(true);
             }}
-            onError={(error) => {
-              console.error('❌ Map error:', error);
-              Alert.alert('Map Error', 'There was an error loading the map. Please check your internet connection and try again.');
-            }}
             loadingEnabled={true}
             loadingIndicatorColor="#667eea"
-          >
+            >
 
 
-              {/* Business markers - keep visible but dimmed during navigation, exclude destination when navigating */}
-              {places
-                .filter(place => !isNavigating || selectedPlace?.id !== place.id)
-                .map((place) => (
+              {/* Business markers - hide all when navigating */}
+              {!isNavigating && places.map((place) => (
                   <BusinessMarker
                     key={place.id}
                     place={place}
@@ -3217,7 +3242,7 @@ const Navigate = () => {
 
 
 
-              {/* Destination marker - Default marker icon */}
+              {/* Destination marker - Google Maps style red pin */}
               {isNavigating && selectedPlace?.businessLocation && (
               <Marker
                   key={`destination-${selectedPlace.id}`}
@@ -3228,7 +3253,17 @@ const Navigate = () => {
                   title={`📍 ${selectedPlace.name}`}
                   description="Destination"
                   zIndex={2000}
-                />
+                  anchor={{ x: 0.5, y: 1 }}
+                >
+                  <View style={styles.destinationMarker}>
+                    {/* Red circular head with flag icon */}
+                    <View style={styles.destinationMarkerHead}>
+                      <Ionicons name="flag" size={iconSizes.md} color="#fff" />
+                    </View>
+                    {/* Red triangular pin point */}
+                    <View style={styles.destinationMarkerPoint} />
+                  </View>
+                </Marker>
               )}
 
               {/* Route line - solid during navigation, no preview when not navigating */}

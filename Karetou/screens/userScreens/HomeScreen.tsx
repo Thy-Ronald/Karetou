@@ -2088,8 +2088,8 @@ const HomeScreen = () => {
           <ResponsiveView style={styles.section}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingHorizontal: isSmallScreen ? spacing.md : spacing.lg }}>
               <ResponsiveText size="lg" weight="bold" color={theme === 'dark' ? '#FFF' : '#000'} style={{ marginBottom: 0 }}>
-                Suggested places
-              </ResponsiveText>
+              Suggested places
+            </ResponsiveText>
               <TouchableOpacity 
                 onPress={() => setPreferencesModalVisible(true)}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}

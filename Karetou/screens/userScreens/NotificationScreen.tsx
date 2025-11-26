@@ -653,7 +653,7 @@ const NotificationScreen = () => {
           
           <ResponsiveView style={styles.notificationActions}>
             {!item.read && (
-              <ResponsiveView style={{
+              <View style={{
                 width: 8,
                 height: 8,
                 borderRadius: 4,
@@ -788,7 +788,7 @@ const NotificationScreen = () => {
                 ))}
                 
                 {/* Separator */}
-                <ResponsiveView style={styles.filterSeparator} />
+                <View style={styles.filterSeparator} />
                 
                 {/* Delete All Option */}
                 <TouchableOpacity

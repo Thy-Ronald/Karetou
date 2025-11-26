@@ -96,7 +96,7 @@ const ReviewsScreen = () => {
         );
         // Clear the params
         setTimeout(() => {
-          navigation.setParams({ businessFromQR: undefined });
+          navigation.setParams({ businessFromQR: undefined } as any);
         }, 100);
         return;
       }
@@ -120,7 +120,7 @@ const ReviewsScreen = () => {
       
       // Clear the params to avoid reopening on navigation back
       setTimeout(() => {
-        navigation.setParams({ businessFromQR: undefined });
+        navigation.setParams({ businessFromQR: undefined } as any);
       }, 100);
     }
   }, [route.params, navigation, user]);
@@ -145,7 +145,7 @@ const ReviewsScreen = () => {
           const reviews = reviewsSnapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data(),
-          }));
+          })) as any[];
           
           // Sort by date (newest first)
           reviews.sort((a, b) => {
@@ -163,7 +163,7 @@ const ReviewsScreen = () => {
       }
       
       // Clear the params to avoid reopening
-      navigation.setParams({ businessToView: undefined });
+      navigation.setParams({ businessToView: undefined } as any);
     }
   }, [route.params, navigation, businesses]);
 
@@ -353,7 +353,7 @@ const ReviewsScreen = () => {
       const reviews = reviewsSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
-      }));
+      })) as any[];
       
       // Sort by date (newest first)
       reviews.sort((a, b) => {

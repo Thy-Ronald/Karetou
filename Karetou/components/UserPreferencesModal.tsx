@@ -86,7 +86,7 @@ const UserPreferencesModal: React.FC<UserPreferencesModalProps> = ({
       // We pass back initialPreferences so the parent state remains consistent
       onClose(initialPreferences);
     } else {
-      onClose([]);
+    onClose([]);
     }
   };
 
