@@ -27,7 +27,7 @@ module.exports = {
     },
     android: {
       adaptiveIcon: {
-        foregroundImage: "./assets/logo3.png",
+        foregroundImage: "./assets/logo4.png",
         backgroundColor: "#ffffff"
       },
       package: "com.karetou.app",
@@ -71,7 +71,7 @@ module.exports = {
       [
         "expo-notifications",
         {
-          icon: "./assets/logo.png",
+          icon: "./assets/logo4.png",
           color: "#667eea",
           defaultChannel: "default"
         }
