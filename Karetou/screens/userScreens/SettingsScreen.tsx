@@ -20,6 +20,7 @@ import { deleteUser } from "firebase/auth";
 import { doc, getDoc } from 'firebase/firestore';
 import { useResponsive } from '../../hooks/useResponsive';
 import { ResponsiveText, ResponsiveView } from '../../components';
+import Constants from 'expo-constants';
 
 interface SectionProps {
   title: string;
@@ -127,6 +128,42 @@ const SettingsScreen = () => {
             );
           },
         },
+      ]
+    );
+  };
+
+  const handleHelpAndSupport = () => {
+    Alert.alert(
+      "Help & Support",
+      "Need assistance? We're here to help!\n\n" +
+      "📧 Email: support@karetou.com\n" +
+      "📱 Phone: 09942043658\n" +
+      "💬 In-App: Check our FAQ section\n\n" +
+      "Our support team is available 24/7 to assist you with any questions or issues.",
+      [
+        { text: "OK", style: "default" }
+      ]
+    );
+  };
+
+  const handleAbout = () => {
+    const appVersion = Constants.expoConfig?.version || '1.0.0';
+    const appName = Constants.expoConfig?.name || 'Karetou';
+    
+    Alert.alert(
+      "About Karetou",
+      `${appName}\n\n` +
+      `Version: ${appVersion}\n\n` +
+      "Karetou is your gateway to discovering the best local businesses and attractions in Silay City.\n\n" +
+      "Features:\n" +
+      "• Discover local businesses\n" +
+      "• Find nearby places\n" +
+      "• Read reviews and ratings\n" +
+      "• Earn loyalty points\n" +
+      "• Get exclusive promotions\n\n" +
+      "© 2024 Karetou. All rights reserved.",
+      [
+        { text: "OK", style: "default" }
       ]
     );
   };
@@ -356,7 +393,7 @@ const SettingsScreen = () => {
               icon="help-circle" 
               name="Help & Support" 
               description="Get help and contact support"
-              onPress={() => console.log('Help & Support pressed')}
+              onPress={handleHelpAndSupport}
             >
               <Feather name="chevron-right" size={iconSizes?.sm || 20} color={theme === 'light' ? '#C0C0C0' : '#666'} />
             </SettingRow>
@@ -365,7 +402,7 @@ const SettingsScreen = () => {
               icon="info" 
               name="About" 
               description="App version and information"
-              onPress={() => console.log('About pressed')}
+              onPress={handleAbout}
             >
               <Feather name="chevron-right" size={iconSizes?.sm || 20} color={theme === 'light' ? '#C0C0C0' : '#666'} />
             </SettingRow>

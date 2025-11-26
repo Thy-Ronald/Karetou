@@ -34,32 +34,32 @@ class PointsService {
     return PointsService.instance;
   }
 
-  // Get current timestamp (for 1-minute testing)
+  // Get current timestamp
   private getCurrentTimestamp(): number {
     return Date.now();
   }
 
-  // Check if a scan is within the last minute (for testing)
-  private isWithinLastMinute(scanTimestamp: string): boolean {
+  // Check if a scan is within the last 24 hours
+  private isWithinLast24Hours(scanTimestamp: string): boolean {
     const scanTime = new Date(scanTimestamp).getTime();
-    const oneMinuteAgo = Date.now() - (60 * 1000); // 1 minute in milliseconds
-    return scanTime > oneMinuteAgo;
+    const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000); // 24 hours in milliseconds
+    return scanTime > twentyFourHoursAgo;
   }
 
-  // Reset scan history - remove scans older than 1 minute (for testing)
+  // Reset scan history - remove scans older than 24 hours
   private async resetDailyScans(userId: string, userPoints: UserPoints): Promise<UserPoints> {
     const now = this.getCurrentTimestamp();
-    const oneMinuteAgo = now - (60 * 1000); // 1 minute ago
+    const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000); // 24 hours ago
     
-    // Filter out scans older than 1 minute
+    // Filter out scans older than 24 hours
     const recentScans = userPoints.scanHistory.filter(scan => {
       const scanTime = new Date(scan.scannedAt).getTime();
-      return scanTime > oneMinuteAgo;
+      return scanTime > twentyFourHoursAgo;
     });
 
     // Only update if there were scans removed
     if (recentScans.length !== userPoints.scanHistory.length) {
-      // Update user points with only recent scans (within last minute)
+      // Update user points with only recent scans (within last 24 hours)
       await updateDoc(doc(db, 'users', userId), {
         'points.scanHistory': recentScans,
         'points.lastResetDate': now.toString(),
@@ -88,7 +88,7 @@ class PointsService {
           lastResetDate: this.getCurrentTimestamp().toString(),
         };
 
-        // Reset scans older than 1 minute if needed
+        // Reset scans older than 24 hours if needed
         const updatedPoints = await this.resetDailyScans(userId, points as UserPoints);
         return updatedPoints;
       } else {
@@ -113,13 +113,13 @@ class PointsService {
     }
   }
 
-  // Check if user has already scanned this business within the last minute (for testing)
+  // Check if user has already scanned this business within the last 24 hours
   async hasScannedToday(userId: string, businessId: string): Promise<boolean> {
     try {
       const userPoints = await this.getUserPoints(userId);
 
       return userPoints.scanHistory.some(scan => {
-        return scan.businessId === businessId && this.isWithinLastMinute(scan.scannedAt);
+        return scan.businessId === businessId && this.isWithinLast24Hours(scan.scannedAt);
       });
     } catch (error) {
       console.error('Error checking scan history:', error);
@@ -166,7 +166,7 @@ class PointsService {
         return {
           success: false,
           pointsEarned: 0,
-          message: 'You have already scanned this business recently. Wait 1 minute to scan again!',
+          message: 'You have already scanned this business today. You can scan again in 24 hours!',
         };
       }
 

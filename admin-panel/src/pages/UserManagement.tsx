@@ -63,7 +63,8 @@ const UserManagement: React.FC = () => {
     }
     const lastLogoutDate = new Date(user.lastLogin); // lastLogin now stores logout time
     const minutesSinceLogout = (new Date().getTime() - lastLogoutDate.getTime()) / (1000 * 60);
-    return minutesSinceLogout > 1;
+    const oneMonthInMinutes = 30 * 24 * 60; // 30 days * 24 hours * 60 minutes = 43,200 minutes
+    return minutesSinceLogout > oneMonthInMinutes;
   };
 
   useEffect(() => {
