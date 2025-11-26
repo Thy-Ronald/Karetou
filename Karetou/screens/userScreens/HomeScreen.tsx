@@ -1373,28 +1373,43 @@ const HomeScreen = () => {
     }
   };
 
-  // Load saved businesses for current user
-  const loadSavedBusinesses = async () => {
-    if (!auth.currentUser) return;
-    
-    try {
-      const q = query(
-        collection(db, 'businesses'),
-        where('savedBy', 'array-contains', auth.currentUser.uid)
-      );
-      const querySnapshot = await getDocs(q);
-      
-      // Check after async operation
-      if (!auth.currentUser) return;
-      
-      const savedIds = querySnapshot.docs.map(doc => doc.id);
-      setSavedBusinesses(savedIds);
-    } catch (error) {
-      if (auth.currentUser) {
-        console.error('Error loading saved businesses:', error);
-      }
+  // Real-time listener for saved businesses
+  useEffect(() => {
+    if (!user?.uid) {
+      setSavedBusinesses([]);
+      return;
     }
-  };
+
+    const businessQuery = query(
+        collection(db, 'businesses'),
+        where('savedBy', 'array-contains', user.uid)
+      );
+
+    const unsubscribe = onSnapshot(
+      businessQuery,
+      (snapshot) => {
+        const savedIds = snapshot.docs.map(doc => doc.id);
+      setSavedBusinesses(savedIds);
+        console.log('✅ Saved businesses updated:', savedIds.length);
+      },
+      (error) => {
+        if (user?.uid) {
+          console.error('Error in saved businesses listener:', error);
+    }
+      }
+    );
+
+    // Register cleanup with AuthContext
+    const unregister = registerCleanup(() => {
+      console.log('🧹 AuthContext cleanup: Unsubscribing from saved businesses listener');
+      unsubscribe();
+    });
+
+    return () => {
+      unsubscribe();
+      unregister();
+    };
+  }, [user?.uid, registerCleanup]);
 
   // Load user preferences
   const loadUserPreferences = async () => {
@@ -1426,7 +1441,7 @@ const HomeScreen = () => {
       };
     } catch (error) {
       if (auth.currentUser) {
-        console.error('Error loading user preferences:', error);
+      console.error('Error loading user preferences:', error);
       }
     }
   };
@@ -1609,6 +1624,8 @@ const HomeScreen = () => {
           categories: data.selectedCategories || (data.selectedCategory ? [data.selectedCategory] : []),
           contactNumber: data.contactNumber,
           businessHours: data.businessHours,
+          openingTime: data.openingTime, // For Navigate screen closed check
+          closingTime: data.closingTime, // For Navigate screen closed check
           businessLocation: data.businessLocation,
           allImages: data.businessImages || [],
           // Keep original business data for navigation
@@ -1700,6 +1717,8 @@ const HomeScreen = () => {
           categories: data.selectedCategories || (data.selectedCategory ? [data.selectedCategory] : []),
           contactNumber: data.contactNumber,
           businessHours: data.businessHours,
+          openingTime: data.openingTime, // For Navigate screen closed check
+          closingTime: data.closingTime, // For Navigate screen closed check
           businessLocation: data.businessLocation,
           allImages: data.businessImages || []
         };
@@ -1755,6 +1774,49 @@ const HomeScreen = () => {
       setPlacesToVisit(fallbackData);
     } finally {
       setLoadingPlaces(false);
+    }
+  };
+
+  // Fetch business data by business name (for promo cards)
+  const fetchBusinessByName = async (businessName: string) => {
+    if (!auth.currentUser) return null;
+    
+    try {
+      const q = query(
+        collection(db, 'businesses'),
+        where('businessName', '==', businessName),
+        where('status', '==', 'approved'),
+        limit(1)
+      );
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const businessDoc = querySnapshot.docs[0];
+        const data = businessDoc.data();
+        return {
+          id: businessDoc.id,
+          name: data.businessName,
+          title: data.businessName,
+          location: data.businessAddress,
+          rating: data.rating || '4.5',
+          reviews: data.reviews || '0 Reviews',
+          image: data.businessImages && data.businessImages.length > 0 
+            ? data.businessImages[0] 
+            : 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?q=80&w=2487&auto=format&fit=crop',
+          businessType: data.selectedType || data.businessType,
+          categories: data.selectedCategories || (data.selectedCategory ? [data.selectedCategory] : []),
+          contactNumber: data.contactNumber,
+          businessHours: data.businessHours,
+          openingTime: data.openingTime, // For Navigate screen closed check
+          closingTime: data.closingTime, // For Navigate screen closed check
+          businessLocation: data.businessLocation,
+          allImages: data.businessImages || []
+        };
+      }
+      return null;
+    } catch (error) {
+      console.error('Error fetching business by name:', error);
+      return null;
     }
   };
 
@@ -1940,7 +2002,7 @@ const HomeScreen = () => {
     
     console.log('🔄 HomeScreen: Loading initial data for user:', user.uid);
     getUserLocation(); // Get user's real location
-    loadSavedBusinesses(); // Load saved businesses
+    // Note: Saved businesses are now loaded via real-time listener in separate useEffect
     
     // loadUserPreferences returns a cleanup function for its listener
     let preferencesCleanup: (() => void) | undefined;
@@ -1990,7 +2052,8 @@ const HomeScreen = () => {
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    Promise.all([getUserLocation(), loadSavedBusinesses(), loadUserPreferences(), loadSuggestedPlaces(), loadPlacesToVisit(), loadPromosAndDeals(), loadAllReviews(), loadUserPoints()]).finally(() => {
+    // Note: Saved businesses are automatically updated via real-time listener
+    Promise.all([getUserLocation(), loadUserPreferences(), loadSuggestedPlaces(), loadPlacesToVisit(), loadPromosAndDeals(), loadAllReviews(), loadUserPoints()]).finally(() => {
       setRefreshing(false);
     });
   }, []);
@@ -2162,7 +2225,7 @@ const HomeScreen = () => {
       console.log(`🧹 AuthContext cleanup: Unsubscribing from ${unsubscribes.length} review listeners`);
       unsubscribes.forEach(unsub => unsub());
     });
-
+    
     return () => {
       unsubscribes.forEach(unsub => unsub());
       unregister();
@@ -2401,7 +2464,36 @@ const HomeScreen = () => {
                 showsHorizontalScrollIndicator={false}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
-                  <TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={async () => {
+                      // Fetch business data by business name
+                      const businessData = await fetchBusinessByName(item.businessName);
+                      if (businessData) {
+                        // Track business view
+                        try {
+                          if (businessData.id) {
+                            const businessRef = doc(db, 'businesses', businessData.id);
+                            await updateDoc(businessRef, {
+                              viewCount: increment(1),
+                              lastViewedAt: new Date().toISOString(),
+                            });
+                            console.log('✅ View tracked for:', businessData.name);
+                          }
+                        } catch (error) {
+                          console.log('❌ Error tracking view:', error);
+                        }
+                        
+                        setSelectedPlace(businessData);
+                        // Fetch user review when place is selected
+                        if (user?.uid && businessData.id) {
+                          fetchUserReview(businessData.id);
+                        }
+                        setDetailsModalVisible(true);
+                      } else {
+                        Alert.alert('Business Not Found', `Could not find business: ${item.businessName}`);
+                      }
+                    }}
+                  >
                     <ImageBackground
                       source={{ uri: item.image }}
                       style={styles.promoCard}

@@ -262,12 +262,21 @@ const SearchBarScreen = () => {
             ...business,
             // Format data for search display
             name: business.businessName,
+            title: business.businessName, // For modal compatibility
             address: business.businessAddress || business.address,
+            location: business.businessAddress || business.address, // For modal compatibility
             type: business.selectedType || business.businessType,
+            businessType: business.selectedType || business.businessType, // For modal compatibility
             image: business.businessImages && business.businessImages.length > 0 ? business.businessImages[0] : null,
-            allImages: business.businessImages || [], // Include all images for Navigate screen
-            rating: business.averageRating || 0,
-            reviews: business.totalReviews || 0,
+            allImages: business.businessImages || [], // Include all images for modal carousel
+            businessImages: business.businessImages || [], // For backward compatibility
+            rating: business.averageRating || business.rating || 0,
+            reviews: business.totalReviews || business.reviews || 0,
+            businessHours: business.businessHours, // For modal
+            openingTime: business.openingTime, // For Navigate screen closed check
+            closingTime: business.closingTime, // For Navigate screen closed check
+            contactNumber: business.contactNumber, // For modal
+            categories: business.selectedCategories || (business.selectedCategory ? [business.selectedCategory] : []), // For modal
             // Add location data for Navigate screen routing
             latitude: business.businessLocation?.latitude || business.location?.latitude,
             longitude: business.businessLocation?.longitude || business.location?.longitude,
@@ -390,9 +399,6 @@ const SearchBarScreen = () => {
                 onChangeText={setSearch}
                 placeholderTextColor="#888"
               />
-              <TouchableOpacity>
-                <Ionicons name="options-outline" size={22} color="#888" style={{ marginLeft: 8, marginRight: 4 }} />
-              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -421,19 +427,16 @@ const SearchBarScreen = () => {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={theme === 'light' ? '#222' : '#fff'} />
           </TouchableOpacity>
-          <View style={styles.searchBarContainer}>
-            <Ionicons name="search" size={20} color="#888" style={{ marginLeft: 8 }} />
-            <TextInput
-              style={styles.searchBar}
-              placeholder="Search establishment"
-              value={search}
-              onChangeText={setSearch}
-              placeholderTextColor="#888"
-            />
-            <TouchableOpacity>
-              <Ionicons name="options-outline" size={22} color="#888" style={{ marginLeft: 8, marginRight: 4 }} />
-            </TouchableOpacity>
-          </View>
+            <View style={styles.searchBarContainer}>
+              <Ionicons name="search" size={20} color="#888" style={{ marginLeft: 8 }} />
+              <TextInput
+                style={styles.searchBar}
+                placeholder="Search establishment"
+                value={search}
+                onChangeText={setSearch}
+                placeholderTextColor="#888"
+              />
+            </View>
         </View>
         {/* Filter Chips */}
         <View style={styles.filterRow}>
@@ -483,6 +486,10 @@ const SearchBarScreen = () => {
               }
               
               setSelectedPlace(item);
+              // Fetch user review when place is selected
+              if (user?.uid && item.id) {
+                fetchUserReview(item.id);
+              }
               setDetailsModalVisible(true);
             }}
           >
@@ -547,7 +554,7 @@ const SearchBarScreen = () => {
               {/* Image Carousel */}
               <View style={styles.carouselWrapper}>
                 <FlatList
-                  data={selectedPlace.businessImages && selectedPlace.businessImages.length > 0 ? selectedPlace.businessImages : [selectedPlace.image]}
+                  data={selectedPlace.allImages && selectedPlace.allImages.length > 0 ? selectedPlace.allImages : (selectedPlace.businessImages && selectedPlace.businessImages.length > 0 ? selectedPlace.businessImages : [selectedPlace.image])}
                   keyExtractor={(uri, idx) => uri + idx}
                   horizontal
                   pagingEnabled
@@ -555,7 +562,7 @@ const SearchBarScreen = () => {
                   renderItem={({ item, index }) => (
                     <View style={styles.imageContainer}>
                       <CachedImage source={{ uri: item }} style={styles.detailsImage} resizeMode="cover" />
-                      {index === 0 && (selectedPlace.businessImages?.length > 1 || selectedPlace.image) && (
+                      {index === 0 && ((selectedPlace.allImages?.length > 1) || (selectedPlace.businessImages?.length > 1) || selectedPlace.image) && (
                         <View style={styles.swipeIndicator}>
                           <Ionicons name="chevron-forward" size={24} color="#fff" />
                           <Text style={styles.swipeText}>Swipe</Text>
@@ -603,9 +610,30 @@ const SearchBarScreen = () => {
                     <Text style={styles.viewMapText}> View on Map</Text>
                   </TouchableOpacity>
                 )}
+                {/* View Reviews Button */}
+                <TouchableOpacity
+                  style={styles.viewReviewsBtn}
+                  onPress={() => {
+                    // Close the current modal first
+                    setDetailsModalVisible(false);
+                    
+                    // Navigate to ReviewsScreen with business data
+                    (navigation as any).navigate('ReviewsScreen', {
+                      businessToView: {
+                        id: selectedPlace.id,
+                        name: selectedPlace.name,
+                        businessType: selectedPlace.type || selectedPlace.businessType,
+                        businessAddress: selectedPlace.address || selectedPlace.businessAddress,
+                      }
+                    });
+                  }}
+                >
+                  <Ionicons name="star" size={20} color="#fff" />
+                  <Text style={styles.viewReviewsText}> View Reviews</Text>
+                </TouchableOpacity>
               </View>
               <TouchableOpacity style={styles.closeButtonModal} onPress={() => setDetailsModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#333" />
+                <Text style={styles.closeButtonText}>×</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -777,7 +805,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: '#ddd',
+    // Shadow for better visibility
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3, // For Android
   },
   searchBar: {
     flex: 1,
@@ -978,8 +1012,18 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 10,
     right: 10,
-    padding: 5,
     zIndex: 2,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    borderRadius: 22,
+  },
+  closeButtonText: {
+    fontSize: 28,
+    color: '#333',
+    fontWeight: '600',
   },
   imageContainer: {
     position: 'relative',
@@ -1023,6 +1067,28 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
     marginLeft: 4,
+  },
+  viewReviewsBtn: {
+    marginTop: 12,
+    width: '100%',
+    backgroundColor: '#667eea',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  viewReviewsText: {
+    color: '#fff',
+    fontWeight: '600',
+    marginLeft: 4,
+    fontSize: 16,
   },
   reviewModalOverlay: {
     flex: 1,

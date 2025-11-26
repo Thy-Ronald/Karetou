@@ -271,6 +271,8 @@ const CachedImage: React.FC<{
 interface Place {
   id: string;
   name: string;
+  title?: string;
+  type?: string;
   description?: string;
   latitude: number;
   longitude: number;
@@ -394,8 +396,6 @@ const Navigate = () => {
   const markerSize = Math.max(32, Math.min(dimensions.width * 0.1, 48));
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [hasPermission, setHasPermission] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Place[]>([]);
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
   const [routeDetails, setRouteDetails] = useState<Route | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -470,36 +470,6 @@ const Navigate = () => {
       marginLeft: spacing.sm,
       fontSize: fontSizes.md,
       minHeight: 36,
-    },
-    searchResultsContainer: {
-      position: 'absolute',
-      top: responsiveHeight(12),
-      left: isSmallScreen ? spacing.md : spacing.lg,
-      right: isSmallScreen ? spacing.md : spacing.lg,
-      backgroundColor: '#fff',
-      borderRadius: borderRadiusValues.md,
-      maxHeight: responsiveHeight(25),
-      elevation: 4,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.25,
-      shadowRadius: 3.84,
-    },
-    searchResult: {
-      padding: spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: '#eee',
-      minHeight: minTouchTarget,
-    },
-    searchResultName: {
-      fontSize: fontSizes.md,
-      fontWeight: '600',
-      color: '#333',
-    },
-    searchResultDesc: {
-      fontSize: fontSizes.sm,
-      color: '#666',
-      marginTop: spacing.xs / 2,
     },
     permissionContainer: {
       flex: 1,
@@ -1649,39 +1619,6 @@ const Navigate = () => {
     }
   };
 
-  // Debounced search with useCallback for performance
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const searchPlaces = useCallback((query: string) => {
-    setSearchQuery(query);
-    
-    // Clear previous timeout
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-    
-    // Debounce search by 300ms
-    searchTimeoutRef.current = setTimeout(() => {
-      if (query.length > 2) {
-        const filtered = places.filter(place =>
-          place.name.toLowerCase().includes(query.toLowerCase()) ||
-          place.description?.toLowerCase().includes(query.toLowerCase())
-        );
-        setSearchResults(filtered);
-      } else {
-        setSearchResults([]);
-      }
-    }, 300);
-  }, [places]);
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-    };
-  }, []);
-
   // Replace getDirectionsFromGoogle with getRouteFromORS
   const getRouteFromORS = async (
     origin: { latitude: number; longitude: number },
@@ -1773,35 +1710,18 @@ const Navigate = () => {
         throw new Error('Invalid route geometry');
       }
 
-      // Convert coordinates from [lon, lat] to {latitude, longitude} - optimized for performance
+      // Convert coordinates from [lon, lat] to {latitude, longitude}
       const rawCoordinates = data.features[0].geometry.coordinates;
       console.log(`🎯 Processing ${rawCoordinates.length} route coordinates`);
       
-      // Optimize coordinate conversion - keep important points for smooth polyline
-      let routeCoordinates;
-      if (rawCoordinates.length > 200) {
-        // For very long routes, keep every 4th point plus start/end for performance
-        routeCoordinates = rawCoordinates
-          .filter((_, index) => index === 0 || index === rawCoordinates.length - 1 || index % 4 === 0)
-          .map(coord => ({
-            latitude: coord[1],
-            longitude: coord[0]
-          }));
-      } else if (rawCoordinates.length > 50) {
-        // For medium routes, keep every 2nd point plus start/end
-        routeCoordinates = rawCoordinates
-          .filter((_, index) => index === 0 || index === rawCoordinates.length - 1 || index % 2 === 0)
-          .map(coord => ({
-            latitude: coord[1],
-            longitude: coord[0]
-          }));
-      } else {
-        // For shorter routes, keep all points for maximum accuracy
-        routeCoordinates = rawCoordinates.map(coord => ({
-          latitude: coord[1],
-          longitude: coord[0]
-        }));
-      }
+      // Keep ALL coordinates for accurate road-following polyline
+      // Removing points causes the route to cut through buildings/areas instead of following roads
+      let routeCoordinates = rawCoordinates.map(coord => ({
+        latitude: coord[1],
+        longitude: coord[0]
+      }));
+      
+      console.log(`✅ Route has ${routeCoordinates.length} points for accurate display`);
       
       // Ensure we always have at least start and end points
       if (routeCoordinates.length < 2) {
@@ -2446,24 +2366,42 @@ const Navigate = () => {
         return;
       }
       
-      // Use OSRM for reliable routing
+      // PRIMARY: Use Google Directions API for most accurate routing
       try {
-        const detailedRoute = await getRouteFromOSRM(origin, destinationCoords, selectedTravelMode);
+        console.log('🗺️ Trying Google Directions API...');
+        const googleRoute = await getRouteFromGoogle(origin, destinationCoords, selectedTravelMode);
         
-        if (detailedRoute && detailedRoute.coordinates && detailedRoute.coordinates.length > 2) {
-          setRouteDetails(detailedRoute);
+        if (googleRoute && googleRoute.coordinates && googleRoute.coordinates.length > 2) {
+          console.log('✅ Google Directions API success:', googleRoute.coordinates.length, 'points');
+          setRouteDetails(googleRoute);
           return;
         }
-      } catch (osrmError) {
-        // Fallback to OpenRouteService
+      } catch (googleError) {
+        console.log('⚠️ Google Directions API failed, trying OSRM fallback...', googleError);
+        
+        // FALLBACK 1: Use OSRM
         try {
-          const orsRoute = await getRouteFromORS(origin, destinationCoords, selectedTravelMode);
-          if (orsRoute && orsRoute.coordinates && orsRoute.coordinates.length > 2) {
-            setRouteDetails(orsRoute);
+          const osrmRoute = await getRouteFromOSRM(origin, destinationCoords, selectedTravelMode);
+          
+          if (osrmRoute && osrmRoute.coordinates && osrmRoute.coordinates.length > 2) {
+            console.log('✅ OSRM fallback success:', osrmRoute.coordinates.length, 'points');
+            setRouteDetails(osrmRoute);
             return;
           }
-        } catch (orsError) {
-          // Both APIs failed
+        } catch (osrmError) {
+          console.log('⚠️ OSRM failed, trying ORS fallback...', osrmError);
+          
+          // FALLBACK 2: Use OpenRouteService
+          try {
+            const orsRoute = await getRouteFromORS(origin, destinationCoords, selectedTravelMode);
+            if (orsRoute && orsRoute.coordinates && orsRoute.coordinates.length > 2) {
+              console.log('✅ ORS fallback success:', orsRoute.coordinates.length, 'points');
+              setRouteDetails(orsRoute);
+              return;
+            }
+          } catch (orsError) {
+            console.log('⚠️ All routing APIs failed');
+          }
         }
       }
       
@@ -2727,9 +2665,28 @@ const Navigate = () => {
           longitude: selectedPlace.businessLocation?.longitude || selectedPlace.longitude,
         };
 
-        // Pre-compute route for current travel mode first
+        // Pre-compute route for current travel mode first - try Google first, then OSRM fallback
         console.log('🔄 Pre-computing route with coordinates:', { origin, destination });
-        const currentRoute = await getRouteFromORS(origin, destination, selectedTravelMode);
+        let currentRoute = null;
+        
+        // Try Google Directions API first
+        try {
+          console.log('🗺️ Pre-compute: Trying Google Directions API...');
+          currentRoute = await getRouteFromGoogle(origin, destination, selectedTravelMode);
+          console.log('✅ Pre-compute: Google success');
+        } catch (googleError) {
+          console.log('⚠️ Pre-compute: Google failed, trying OSRM...');
+          // Fallback to OSRM
+          try {
+            currentRoute = await getRouteFromOSRM(origin, destination, selectedTravelMode);
+            console.log('✅ Pre-compute: OSRM success');
+          } catch (osrmError) {
+            console.log('⚠️ Pre-compute: OSRM failed, trying ORS...');
+            // Final fallback to ORS
+            currentRoute = await getRouteFromORS(origin, destination, selectedTravelMode);
+          }
+        }
+        
         if (currentRoute) {
           console.log(`✅ Current route (${selectedTravelMode}) pre-computed:`, {
             distance: currentRoute.distance,
@@ -2748,12 +2705,12 @@ const Navigate = () => {
           console.warn('❌ Failed to pre-compute route, no route returned');
         }
 
-        // Pre-compute other travel modes in background for instant switching
+        // Pre-compute other travel modes in background for instant switching (use OSRM for background tasks to save API calls)
         const otherModes = ['driving', 'walking', 'bicycling', 'transit'].filter(mode => mode !== selectedTravelMode);
         
         // Use Promise.allSettled to continue even if some routes fail
         Promise.allSettled(
-          otherModes.map(mode => getRouteFromORS(origin, destination, mode))
+          otherModes.map(mode => getRouteFromOSRM(origin, destination, mode))
         ).then(results => {
           const successCount = results.filter(r => r.status === 'fulfilled').length;
           console.log(`🎯 Pre-computed ${successCount}/${otherModes.length} additional routes`);
@@ -2803,33 +2760,32 @@ const Navigate = () => {
        } else {
          console.log(`🔄 Calculating new route for ${selectedTravelMode}...`);
          
-         // Calculate route immediately for this travel mode
+         // Calculate route - try Google first, then OSRM, then ORS
+         let newRoute = null;
          try {
-           const newRoute = await getRouteFromORS(origin, destination, selectedTravelMode);
-           if (newRoute) {
-             console.log(`✅ New route calculated for ${selectedTravelMode}:`, {
-               distance: newRoute.distance,
-               duration: newRoute.duration
-             });
-             setRouteDetails(newRoute);
-           } else {
-             // If API fails, use fallback calculation with correct travel mode
-             console.log(`⚠️ API failed for ${selectedTravelMode}, using fallback calculation`);
-             const fallbackResult = calculateStraightLineDistance(origin, destination, selectedTravelMode);
-             const fallbackTrafficInfo = generateTrafficInsights(fallbackResult.distance, fallbackResult.duration, selectedTravelMode);
-             
-             const fallbackRoute = {
-               coordinates: [origin, destination],
-               distance: fallbackResult.distance,
-               duration: fallbackResult.duration,
-               trafficInfo: fallbackTrafficInfo
-             };
-             
-             setRouteDetails(fallbackRoute);
+           console.log(`🗺️ Route switch: Trying Google for ${selectedTravelMode}...`);
+           newRoute = await getRouteFromGoogle(origin, destination, selectedTravelMode);
+           console.log(`✅ Route switch: Google success for ${selectedTravelMode}`);
+         } catch (googleError) {
+           console.log(`⚠️ Route switch: Google failed, trying OSRM...`);
+           try {
+             newRoute = await getRouteFromOSRM(origin, destination, selectedTravelMode);
+             console.log(`✅ Route switch: OSRM success for ${selectedTravelMode}`);
+           } catch (osrmError) {
+             console.log(`⚠️ Route switch: OSRM failed, trying ORS...`);
+             newRoute = await getRouteFromORS(origin, destination, selectedTravelMode);
            }
-         } catch (error) {
-           console.error(`Error calculating route for ${selectedTravelMode}:`, error);
-           // Fallback calculation
+         }
+         
+         if (newRoute) {
+           console.log(`✅ New route calculated for ${selectedTravelMode}:`, {
+             distance: newRoute.distance,
+             duration: newRoute.duration
+           });
+           setRouteDetails(newRoute);
+         } else {
+           // If all APIs fail, use fallback calculation with correct travel mode
+           console.log(`⚠️ All APIs failed for ${selectedTravelMode}, using fallback calculation`);
            const fallbackResult = calculateStraightLineDistance(origin, destination, selectedTravelMode);
            const fallbackTrafficInfo = generateTrafficInsights(fallbackResult.distance, fallbackResult.duration, selectedTravelMode);
            
@@ -2937,35 +2893,55 @@ const Navigate = () => {
    useEffect(() => {
      if (route.params?.business) {
        const business = route.params.business;
-       console.log('📍 Business passed via navigation:', business.name);
-       
-       // Set the business as selected and open the modal
-       setSelectedPlace(business);
-       
-       // Create business details from the passed business
-       const businessDetails = {
-         name: business.name,
-         businessType: business.businessType || business.description || 'Business',
-         location: business.location || business.address || 'Location not available',
-         businessHours: business.businessHours || 'Business hours not available',
-         contactNumber: business.contactNumber || 'Contact not available',
-         image: business.image || '',
-         allImages: business.allImages || [],
-         latitude: business.latitude,
-         longitude: business.longitude,
-         description: business.description,
-       };
-       
-       setSelectedBusinessDetails(businessDetails);
-       setDetailsModalVisible(true);
-       setCurrentImageIndex(0);
-       
-       // Calculate distance if we have location
-       if (location && business.businessLocation) {
-         calculateDistance(business);
-       }
-     }
-   }, [route.params?.business, location]);
+      const businessName = business.name || business.title || 'Business';
+      console.log('📍 Business passed via navigation:', businessName);
+      
+      // Set the business as selected and open the modal
+      setSelectedPlace(business);
+      
+      const targetLat = business.latitude || business.businessLocation?.latitude;
+      const targetLng = business.longitude || business.businessLocation?.longitude;
+      
+      // Create business details from the passed business
+      const businessDetails = {
+        name: businessName,
+        businessType: business.businessType || business.type || business.description || 'Business',
+        location: business.location || business.address || 'Location not available',
+        businessHours: business.businessHours || 'Business hours not available',
+        contactNumber: business.contactNumber || 'Contact not available',
+        image: business.image || '',
+        allImages: business.allImages || [],
+        latitude: targetLat,
+        longitude: targetLng,
+        description: business.description,
+        openingTime: business.openingTime,
+        closingTime: business.closingTime,
+      };
+      
+      setSelectedBusinessDetails(businessDetails);
+      setDetailsModalVisible(true);
+      setCurrentImageIndex(0);
+      
+      // Check if business is closed - this will disable navigation if closed
+      checkIfBusinessClosed(business);
+      
+      // Calculate distance if we have location
+      if (location && (business.businessLocation || (targetLat && targetLng))) {
+        calculateDistance(business);
+      }
+      
+      // Center map on business
+      if (mapRef.current && targetLat && targetLng) {
+        console.log('🗺️ Centering map on business:', businessName);
+        mapRef.current.animateToRegion({
+          latitude: targetLat,
+          longitude: targetLng,
+          latitudeDelta: 0.005,
+          longitudeDelta: 0.005,
+        }, 1000);
+      }
+    }
+  }, [route.params?.business, location, mapReady]);
 
   // Update the getBusinessImage function
   const getBusinessImage = (place: Place | BusinessDetails) => {
@@ -3092,11 +3068,13 @@ const Navigate = () => {
         }
       }, 50);
 
-      // Get the real route using OSRM (more reliable than ORS)
+      // PRIMARY: Get the real route using Google Directions API (most accurate)
       try {
-        const route = await getRouteFromOSRM(origin, destination, selectedTravelMode);
+        console.log('🗺️ Navigation: Trying Google Directions API...');
+        const route = await getRouteFromGoogle(origin, destination, selectedTravelMode);
         
         if (route && route.coordinates && route.coordinates.length > 2) {
+          console.log('✅ Navigation: Google Directions API success:', route.coordinates.length, 'points');
           setRouteDetails(route);
           
           // Update map with real route - force immediate update
@@ -3109,14 +3087,17 @@ const Navigate = () => {
             }
           }, 200);
         } else {
-          throw new Error('OSRM returned insufficient coordinates');
+          throw new Error('Google returned insufficient coordinates');
         }
-      } catch (osrmError) {
-        // Fallback to OpenRouteService if OSRM fails
+      } catch (googleError) {
+        console.log('⚠️ Navigation: Google failed, trying OSRM fallback...', googleError);
+        
+        // FALLBACK 1: Use OSRM
         try {
-          const route = await getRouteFromORS(origin, destination, selectedTravelMode);
+          const route = await getRouteFromOSRM(origin, destination, selectedTravelMode);
           
           if (route && route.coordinates && route.coordinates.length > 2) {
+            console.log('✅ Navigation: OSRM fallback success:', route.coordinates.length, 'points');
             setRouteDetails(route);
             
             // Update map with real route - force immediate update
@@ -3128,9 +3109,34 @@ const Navigate = () => {
                 });
               }
             }, 200);
+          } else {
+            throw new Error('OSRM returned insufficient coordinates');
           }
-        } catch (orsError) {
-          // Both routing services failed, enhanced estimated route is already set above as fallback
+        } catch (osrmError) {
+          console.log('⚠️ Navigation: OSRM failed, trying ORS fallback...', osrmError);
+          
+          // FALLBACK 2: Use OpenRouteService
+          try {
+            const route = await getRouteFromORS(origin, destination, selectedTravelMode);
+            
+            if (route && route.coordinates && route.coordinates.length > 2) {
+              console.log('✅ Navigation: ORS fallback success:', route.coordinates.length, 'points');
+              setRouteDetails(route);
+              
+              // Update map with real route - force immediate update
+              setTimeout(() => {
+                if (mapRef.current && route.coordinates && route.coordinates.length >= 2) {
+                  mapRef.current.fitToCoordinates(route.coordinates, {
+                    edgePadding: { top: 80, right: 80, bottom: 80, left: 80 },
+                    animated: true,
+                  });
+                }
+              }, 200);
+            }
+          } catch (orsError) {
+            console.log('⚠️ Navigation: All routing services failed, using estimated route');
+            // All routing services failed, enhanced estimated route is already set above as fallback
+          }
         }
       }
     } catch (error) {
