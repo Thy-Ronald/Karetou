@@ -64,7 +64,7 @@ const SavedScreen = () => {
   const [commentModalVisible, setCommentModalVisible] = useState(false);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [commentText, setCommentText] = useState('');
-  const { theme, user } = useAuth();
+  const { theme, user, registerCleanup } = useAuth();
   
   // Get responsive values
   const responsive = useResponsive();
@@ -147,10 +147,17 @@ const SavedScreen = () => {
       });
     }
 
+    // Register cleanup with AuthContext
+    const unregister = registerCleanup(() => {
+      console.log('🧹 AuthContext cleanup: Unsubscribing from SavedScreen listener');
+      if (unsubscribe) unsubscribe();
+    });
+
     return () => {
       if (unsubscribe) unsubscribe();
+      unregister();
     };
-  }, [user?.uid, activeTab]);
+  }, [user?.uid, activeTab, registerCleanup]);
 
   const handleUnsavePost = async (postId: string) => {
     if (!user?.uid) return;

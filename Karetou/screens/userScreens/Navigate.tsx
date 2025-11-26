@@ -21,12 +21,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { useAuth } from '../../contexts/AuthContext';
-import { db } from '../../firebase';
+import { auth, db } from '../../firebase';
 import { collection, query, getDocs, where, doc, getDoc, onSnapshot, updateDoc, increment } from 'firebase/firestore';
 import LoadingImage from '../../components/LoadingImage';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import { useResponsive } from '../../hooks/useResponsive';
 import { ResponsiveText, ResponsiveView } from '../../components';
+import Constants from 'expo-constants';
 
 // Removed fixed dimensions - using responsive hook instead
 
@@ -82,10 +83,33 @@ const BusinessMarker = React.memo<{
 }>(({ place, isNavigating, isSelected, onPress, markerStyles, markerSize }) => {
   const businessImage = place.image || (place.allImages && place.allImages.length > 0 ? place.allImages[0] : null);
   const hasImage = !!businessImage;
+  const [imageLoading, setImageLoading] = useState(hasImage); // Start as loading if image exists
+  const [imageError, setImageError] = useState(false);
   
   // Calculate border width based on selection state
   const borderWidth = isNavigating && isSelected ? 4 : 2;
   const imageSize = markerSize - (borderWidth * 2);
+  
+  // Reset loading state when image changes
+  useEffect(() => {
+    if (hasImage) {
+      setImageLoading(true);
+      setImageError(false);
+    } else {
+      setImageLoading(false);
+      setImageError(false);
+    }
+  }, [businessImage, hasImage]);
+  
+  const handleImageLoad = () => {
+    setImageLoading(false);
+    setImageError(false);
+  };
+  
+  const handleImageError = () => {
+    setImageLoading(false);
+    setImageError(true);
+  };
   
   return (
     <Marker
@@ -115,19 +139,41 @@ const BusinessMarker = React.memo<{
             zIndex: 2,
           }
         ]}>
-          {hasImage ? (
-            <Image
-              source={{ uri: businessImage }}
-              style={[
-                markerStyles.businessMarkerImage,
-                {
-                  width: imageSize,
-                  height: imageSize,
-                  borderRadius: imageSize / 2,
-                }
-              ]}
-              resizeMode="cover"
-            />
+          {hasImage && !imageError ? (
+            <>
+              {imageLoading && (
+                <View style={[
+                  markerStyles.businessMarkerImage,
+                  {
+                    position: 'absolute',
+                    width: imageSize,
+                    height: imageSize,
+                    borderRadius: imageSize / 2,
+                    backgroundColor: '#f0f0f0',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    zIndex: 1,
+                  }
+                ]}>
+                  <ActivityIndicator size="small" color="#667eea" />
+                </View>
+              )}
+              <Image
+                source={{ uri: businessImage }}
+                style={[
+                  markerStyles.businessMarkerImage,
+                  {
+                    width: imageSize,
+                    height: imageSize,
+                    borderRadius: imageSize / 2,
+                    opacity: imageLoading ? 0 : 1,
+                  }
+                ]}
+                resizeMode="cover"
+                onLoad={handleImageLoad}
+                onError={handleImageError}
+              />
+            </>
           ) : (
             <View style={[
               markerStyles.businessMarkerFallback,
@@ -288,7 +334,10 @@ const AVERAGE_SPEEDS = {
   bicycling: 15,    // km/h
 };
 
-const ORS_API_KEY = '5b3ce3597851110001cf6248e6a2bc17f1e244d5bdc5cd334e10232b';
+// Get OpenRouteService API key from environment variables
+const ORS_API_KEY = Constants.expoConfig?.extra?.orsApiKey || 
+                    process.env.EXPO_PUBLIC_ORS_API_KEY || 
+                    '5b3ce3597851110001cf6248e6a2bc17f1e244d5bdc5cd334e10232b'; // Fallback for backward compatibility
 
 // Haversine distance function (from reference code)
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -330,7 +379,7 @@ type NavigateRouteProp = RouteProp<{ Navigate: NavigateRouteParams }, 'Navigate'
 
 const Navigate = () => {
   const route = useRoute<NavigateRouteProp>();
-  const { theme } = useAuth();
+  const { theme, registerCleanup } = useAuth();
   const { spacing, fontSizes, iconSizes, borderRadius: borderRadiusValues, getResponsiveWidth, getResponsiveHeight, dimensions, responsiveHeight, responsiveWidth, responsiveFontSize } = useResponsive();
   const mapRef = useRef<MapView>(null);
   
@@ -371,6 +420,7 @@ const Navigate = () => {
   const [businessRatings, setBusinessRatings] = useState<{[key: string]: {average: string, count: number}}>({});
   const [reviewUnsubscribes, setReviewUnsubscribes] = useState<{[key: string]: any}>({});
   const previouslyDetectedBusinessesRef = useRef(new Set<string>());
+  const hasFocusedOnUserLocationRef = useRef(false);
 
   const lightGradient = ['#F5F5F5', '#F5F5F5'] as const;
   const darkGradient = ['#232526', '#414345'] as const;
@@ -1464,16 +1514,26 @@ const Navigate = () => {
       return unsubscribe;
     };
 
-    const unsubscribe = setupNavigation();
+    let unsubscribeFromSetup: (() => void) | undefined;
+    setupNavigation().then(unsub => {
+      unsubscribeFromSetup = unsub;
+    });
+
+    // Register cleanup with AuthContext
+    const unregister = registerCleanup(() => {
+      console.log('🧹 AuthContext cleanup: Unsubscribing from Navigate business listener');
+      if (unsubscribeFromSetup) {
+        unsubscribeFromSetup();
+      }
+    });
     
     return () => {
-      unsubscribe.then(unsub => {
-        if (unsub && typeof unsub === 'function') {
-          unsub();
-        }
-      });
+      if (unsubscribeFromSetup) {
+        unsubscribeFromSetup();
+      }
+      unregister();
     };
-  }, []);
+  }, [registerCleanup]);
 
   const requestLocationPermission = async () => {
     try {
@@ -1910,8 +1970,13 @@ const Navigate = () => {
           break;
       }
 
+      // Get Google Maps API key from environment variables
+      const googleMapsApiKey = Constants.expoConfig?.extra?.googleMapsApiKey || 
+                               Constants.expoConfig?.android?.config?.googleMaps?.apiKey ||
+                               'AIzaSyByXb-FgYHiNhVIsK00kM1jdXYr_OerV7Q'; // Fallback for backward compatibility
+
       const response = await fetch(
-        `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&mode=${googleMode}&key=AIzaSyByXb-FgYHiNhVIsK00kM1jdXYr_OerV7Q`,
+        `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&mode=${googleMode}&key=${googleMapsApiKey}`,
         { signal: controller.signal }
       );
 
@@ -2912,31 +2977,29 @@ const Navigate = () => {
     return null;
   };
 
-  // Add effect to fit map to markers when businesses load
+  // Focus map on user location when screen opens (only once)
   useEffect(() => {
-    if (mapReady && places.length > 0 && mapRef.current) {
-      // Auto-fit map to show all business markers
-      const coordinates = places.map(place => ({
-        latitude: place.businessLocation.latitude,
-        longitude: place.businessLocation.longitude,
-      }));
-      
-      // Add user location if available
-      if (location || cachedLocation) {
-        coordinates.push({
-          latitude: location?.coords.latitude || cachedLocation?.coords.latitude || 0,
-          longitude: location?.coords.longitude || cachedLocation?.coords.longitude || 0,
+    if (mapReady && mapRef.current && (location || cachedLocation) && !hasFocusedOnUserLocationRef.current) {
+      const userLocation = location || cachedLocation;
+      if (userLocation) {
+        console.log('📍 Focusing map on user location:', {
+          lat: userLocation.coords.latitude,
+          lon: userLocation.coords.longitude
         });
-      }
-      
-      if (coordinates.length > 0) {
-        mapRef.current.fitToCoordinates(coordinates, {
-          edgePadding: { top: 100, right: 100, bottom: 100, left: 100 },
-          animated: true,
-        });
+        
+        // Focus on user location with appropriate zoom level
+        mapRef.current.animateToRegion({
+          latitude: userLocation.coords.latitude,
+          longitude: userLocation.coords.longitude,
+          latitudeDelta: 0.01, // Zoom level to show nearby area
+          longitudeDelta: 0.01,
+        }, 1000); // 1 second animation
+        
+        // Mark as focused so it only happens once
+        hasFocusedOnUserLocationRef.current = true;
       }
     }
-  }, [mapReady, places.length, location, cachedLocation]);
+  }, [mapReady, location, cachedLocation]);
 
   // Update the FlatList data handling
   const getCarouselImages = (place: Place): string[] => {
@@ -3169,41 +3232,6 @@ const Navigate = () => {
         </View>
         )}
 
-        {/* Search bar outside of map - hide during navigation */}
-        {!isNavigating && (
-        <View style={styles.searchBarContainer}>
-          <View style={styles.searchBar}>
-            <Ionicons name="search" size={iconSizes.md} color="#666" />
-            <TextInput
-              style={styles.searchBarInput}
-              placeholder="Search destination..."
-              placeholderTextColor="#888"
-              value={searchQuery}
-              onChangeText={searchPlaces}
-            />
-          </View>
-          {searchResults.length > 0 && (
-            <View style={styles.searchResultsContainer}>
-              <FlatList
-                data={searchResults}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={styles.searchResult}
-                      onPress={() => {
-                        console.log('Search result pressed for:', item.name);
-                        handlePlaceSelect(item);
-                      }}
-                  >
-                    <Text style={styles.searchResultName}>{item.name}</Text>
-                    <Text style={styles.searchResultDesc}>{item.description}</Text>
-          </TouchableOpacity>
-                )}
-              />
-            </View>
-          )}
-        </View>
-        )}
         
         <View style={styles.mapContainer}>
           <View style={{ flex: 1 }}>

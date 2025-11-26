@@ -38,7 +38,7 @@ const FeedScreen = () => {
   const [editCommentText, setEditCommentText] = useState('');
   const [showDropdown, setShowDropdown] = useState<string | null>(null);
   
-  const { theme, user } = useAuth();
+  const { theme, user, registerCleanup } = useAuth();
   const { spacing, fontSizes, iconSizes, borderRadius: borderRadiusValues, getResponsiveWidth, getResponsiveHeight, dimensions, responsiveHeight, responsiveWidth, responsiveFontSize } = useResponsive();
   
   // Calculate responsive dimensions
@@ -534,8 +534,17 @@ const FeedScreen = () => {
       setLoading(false);
     });
 
-    return () => unsubscribe();
-  }, []);
+    // Register cleanup with AuthContext
+    const unregister = registerCleanup(() => {
+      console.log('🧹 AuthContext cleanup: Unsubscribing from FeedScreen posts listener');
+      unsubscribe();
+    });
+
+    return () => {
+      unsubscribe();
+      unregister();
+    };
+  }, [registerCleanup]);
 
   const onRefresh = () => {
     setRefreshing(true);

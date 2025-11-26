@@ -35,7 +35,7 @@ type RootStackParamList = {
 // --- Component ---
 const BusinessHomeScreen = () => {
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
-  const { user, theme, refreshData, unreadNotificationCount, modalVisible, modalStatus, modalBusinessName, closeModal } = useAuth();
+  const { user, theme, refreshData, unreadNotificationCount, modalVisible, modalStatus, modalBusinessName, closeModal, registerCleanup } = useAuth();
   const { spacing, fontSizes, iconSizes, borderRadius, getResponsiveWidth, getResponsiveHeight, dimensions } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [recentReviews, setRecentReviews] = useState<any[]>([]);
@@ -75,8 +75,17 @@ const BusinessHomeScreen = () => {
       }
     });
     
-    return () => unsubscribe();
-  }, [user?.uid]);
+    // Register cleanup with AuthContext
+    const unregister = registerCleanup(() => {
+      console.log('🧹 AuthContext cleanup: Unsubscribing from BusinessHomeScreen business listener');
+      unsubscribe();
+    });
+    
+    return () => {
+      unsubscribe();
+      unregister();
+    };
+  }, [user?.uid, registerCleanup]);
 
   // Function to generate a profile icon for users without uploaded photos
   const generateUserAvatar = (userName: string, userId: string) => {
@@ -88,6 +97,12 @@ const BusinessHomeScreen = () => {
   const fetchReviewsFromAllBusinesses = (businessIds: string[]) => {
     const unsubscribes: (() => void)[] = [];
     const allReviews: any[] = [];
+    
+    // Register cleanup for these nested listeners
+    const unregister = registerCleanup(() => {
+      console.log(`🧹 AuthContext cleanup: Unsubscribing from ${unsubscribes.length} BusinessHomeScreen review listeners`);
+      unsubscribes.forEach(unsub => unsub());
+    });
     
     businessIds.forEach((bizId, index) => {
       console.log(`Setting up listener for business ${index + 1}:`, bizId);

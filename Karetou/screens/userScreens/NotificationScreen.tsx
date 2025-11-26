@@ -23,7 +23,7 @@ import { ResponsiveText, ResponsiveView } from '../../components';
 
 const NotificationScreen = () => {
   const navigation = useNavigation();
-  const { user, userType, theme } = useAuth();
+  const { user, userType, theme, registerCleanup } = useAuth();
   const { spacing, fontSizes, iconSizes, borderRadius: borderRadiusValues, dimensions, responsiveHeight, responsiveWidth } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [notifications, setNotifications] = useState<NotificationData[]>([]);
@@ -75,16 +75,26 @@ const NotificationScreen = () => {
         setLoading(false);
       },
       (error) => {
-        console.error('Error loading notifications:', error);
+        // Ignore permission errors on logout
+        if (user?.uid) {
+          console.error('Error loading notifications:', error);
+        }
         setLoading(false);
       }
     );
 
+    // Register cleanup with AuthContext
+    const unregister = registerCleanup(() => {
+      console.log('🧹 AuthContext cleanup: Unsubscribing from notifications listener');
+      unsubscribe();
+    });
+
     return () => {
       console.log('🧹 Cleaning up notifications listener');
       unsubscribe();
+      unregister();
     };
-  }, [user?.uid]);
+  }, [user?.uid, registerCleanup]);
 
   const onRefresh = () => {
     setRefreshing(true);

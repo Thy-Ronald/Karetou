@@ -30,7 +30,7 @@ import { ResponsiveText, ResponsiveView } from '../../../components';
 const { width: screenWidth } = Dimensions.get('window');
 
 const MyBusinessScreen = () => {
-  const { user, theme, refreshData } = useAuth();
+  const { user, theme, refreshData, registerCleanup } = useAuth();
   const { spacing, fontSizes, iconSizes, borderRadius, getResponsiveWidth, getResponsiveHeight, dimensions } = useResponsive();
   const navigation = useNavigation();
   const [businesses, setBusinesses] = useState<any[]>([]);
@@ -116,12 +116,19 @@ const MyBusinessScreen = () => {
       }
     );
 
+    // Register cleanup with AuthContext
+    const unregister = registerCleanup(() => {
+      console.log('🧹 AuthContext cleanup: Unsubscribing from MyBusinessScreen listener');
+      unsubscribe();
+    });
+    
     // Cleanup listener on unmount
     return () => {
       console.log('🧹 Cleaning up business listener');
       unsubscribe();
+      unregister();
     };
-  }, [user?.uid]);
+  }, [user?.uid, registerCleanup]);
 
   const onRefresh = async () => {
     setRefreshing(true);

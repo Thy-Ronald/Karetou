@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect, ReactNode, useMemo, useCallback } from 'react';
+import React, { createContext, useState, useContext, useEffect, ReactNode, useMemo, useCallback, useRef } from 'react';
 import { auth } from '../firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { Appearance, Alert } from 'react-native';
@@ -27,6 +27,7 @@ interface AuthContextType {
   markNotificationAsRead: (notificationId: string) => void;
   refreshData: () => void;
   closeModal: () => void;
+  registerCleanup: (cleanupFn: () => void) => () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -46,6 +47,7 @@ const AuthContext = createContext<AuthContextType>({
   markNotificationAsRead: () => {},
   refreshData: () => {},
   closeModal: () => {},
+  registerCleanup: () => () => {},
 });
 
 export const useAuth = (): AuthContextType => {
@@ -69,6 +71,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [modalBusinessName, setModalBusinessName] = useState('');
 
   const notificationService = NotificationService.getInstance();
+
+  // Global cleanup registry for Firebase listeners
+  const cleanupRegistry = useRef(new Set<() => void>());
+
+  // Register cleanup functions that should run on logout
+  const registerCleanup = useCallback((cleanupFn: () => void) => {
+    cleanupRegistry.current.add(cleanupFn);
+    return () => {
+      cleanupRegistry.current.delete(cleanupFn);
+    };
+  }, []);
 
   // Load theme preference based on user type
   useEffect(() => {
@@ -144,14 +157,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const logout = useCallback(async () => {
     try {
+      // 1. Run all registered cleanup functions BEFORE signing out
+      console.log(`🧹 Running ${cleanupRegistry.current.size} cleanup functions before logout`);
+      cleanupRegistry.current.forEach(cleanup => {
+        try {
+          cleanup();
+        } catch (e) {
+          console.error('Error running cleanup function:', e);
+        }
+      });
+      cleanupRegistry.current.clear();
+
       // Store current user type as last user type before logout
       console.log('🔓 Logging out. Current userType:', userType, 'Setting as lastUserType');
       setLastUserType(userType);
       
       // Update lastLogin (logout time) for users
-      if (user?.uid) {
+      if (auth.currentUser?.uid) {
         try {
-          const userDocRef = doc(db, 'users', user.uid);
+          const userDocRef = doc(db, 'users', auth.currentUser.uid);
           await updateDoc(userDocRef, {
             lastLogin: new Date().toISOString(), // Store logout time
           });
@@ -170,7 +194,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     } catch (error) {
       console.error('Error signing out:', error);
     }
-  }, [userType, user]);
+  }, [userType]);
 
   const markNotificationAsRead = useCallback(async (notificationId: string) => {
     try {
@@ -319,7 +343,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setModalStatus(null);
       setModalBusinessName('');
     },
-  }), [user, userType, lastUserType, loading, theme, notifications, unreadNotificationCount, modalVisible, modalStatus, modalBusinessName, toggleTheme, logout, markNotificationAsRead, refreshData]);
+    registerCleanup,
+  }), [user, userType, lastUserType, loading, theme, notifications, unreadNotificationCount, modalVisible, modalStatus, modalBusinessName, toggleTheme, logout, markNotificationAsRead, refreshData, registerCleanup]);
 
   return (
     <AuthContext.Provider value={value}>

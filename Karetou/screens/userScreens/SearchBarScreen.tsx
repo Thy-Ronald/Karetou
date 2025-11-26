@@ -176,7 +176,7 @@ const SearchBarScreen = () => {
   const [reviewLoading, setReviewLoading] = useState(false);
   const [businessRatings, setBusinessRatings] = useState<{ [businessId: string]: { average: string, count: number } }>({});
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
-  const { theme, user } = useAuth();
+  const { theme, user, registerCleanup } = useAuth();
 
   const lightGradient = ['#F5F5F5', '#F5F5F5'] as const;
   const darkGradient = ['#232526', '#414345'] as const;
@@ -300,17 +300,27 @@ const SearchBarScreen = () => {
         });
       },
       (error) => {
-        console.error('Error in business search listener:', error);
+        // Ignore permission errors on logout
+        if (user?.uid) {
+          console.error('Error in business search listener:', error);
+        }
         setLoading(false);
       }
     );
+
+    // Register cleanup with AuthContext
+    const unregister = registerCleanup(() => {
+      console.log('🧹 AuthContext cleanup: Unsubscribing from business search listener');
+      unsubscribe();
+    });
 
     // Cleanup listener on unmount
     return () => {
       console.log('🧹 Cleaning up business search listener');
       unsubscribe();
+      unregister();
     };
-  }, []);
+  }, [registerCleanup]);
 
   // Real-time listener for reviews of all loaded businesses
   useEffect(() => {
@@ -338,10 +348,18 @@ const SearchBarScreen = () => {
       });
       unsubscribes.push(unsubscribe);
     });
+
+    // Register cleanup with AuthContext
+    const unregister = registerCleanup(() => {
+      console.log('🧹 AuthContext cleanup: Unsubscribing from SearchBar reviews listeners');
+      unsubscribes.forEach(unsub => unsub());
+    });
+
     return () => {
       unsubscribes.forEach(unsub => unsub());
+      unregister();
     };
-  }, [businesses]);
+  }, [businesses, registerCleanup]);
 
   const filteredData = businesses.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(search.toLowerCase());

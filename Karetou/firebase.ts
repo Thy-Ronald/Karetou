@@ -1,14 +1,17 @@
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import { initializeApp } from "firebase/app";
-import { getReactNativePersistence, initializeAuth } from 'firebase/auth';
+import { getAuth } from 'firebase/auth';
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from 'firebase/storage';
 import Constants from 'expo-constants';
 
-// Firebase configuration
-// For development, use the fallback config below
-// For production, set environment variables in your build system
-const firebaseConfig = {
+// Firebase configuration from environment variables
+// Reads from app.config.js -> extra.firebase (set via .env or EAS Secrets)
+const firebaseConfigFromEnv = Constants.expoConfig?.extra?.firebase;
+
+// Fallback to hardcoded values only if environment variables are not set
+// This ensures backward compatibility during transition
+const firebaseConfig = firebaseConfigFromEnv || {
     apiKey: "AIzaSyByXb-FgYHiNhVIsK00kM1jdXYr_OerV7Q",
     authDomain: "karetou-cfd5b.firebaseapp.com",
     projectId: "karetou-cfd5b",
@@ -21,8 +24,8 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-export const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(ReactNativeAsyncStorage),
-});
+// Initialize Auth - Firebase v11 automatically handles React Native persistence
+// ReactNativeAsyncStorage is imported but not needed explicitly in v11
+export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);

@@ -22,7 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { useAuth } from '../../contexts/AuthContext';
-import { db } from '../../firebase';
+import { auth, db } from '../../firebase';
 import PointsService from '../../services/PointsService';
 import { collection, query, getDocs, where, orderBy, limit, addDoc, doc, onSnapshot, updateDoc, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
 import LoadingImage from '../../components/LoadingImage';
@@ -215,7 +215,7 @@ const fallbackSuggestedPlaces = [
 // --- Component ---
 const HomeScreen = () => {
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
-  const { theme, user, notifications, unreadNotificationCount } = useAuth();
+  const { theme, user, notifications, unreadNotificationCount, registerCleanup } = useAuth();
   const { spacing, fontSizes, iconSizes, borderRadius } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [placesToVisit, setPlacesToVisit] = useState<any[]>([]);
@@ -1375,38 +1375,59 @@ const HomeScreen = () => {
 
   // Load saved businesses for current user
   const loadSavedBusinesses = async () => {
-    if (!user?.uid) return;
+    if (!auth.currentUser) return;
     
     try {
       const q = query(
         collection(db, 'businesses'),
-        where('savedBy', 'array-contains', user.uid)
+        where('savedBy', 'array-contains', auth.currentUser.uid)
       );
       const querySnapshot = await getDocs(q);
+      
+      // Check after async operation
+      if (!auth.currentUser) return;
+      
       const savedIds = querySnapshot.docs.map(doc => doc.id);
       setSavedBusinesses(savedIds);
     } catch (error) {
-      console.error('Error loading saved businesses:', error);
+      if (auth.currentUser) {
+        console.error('Error loading saved businesses:', error);
+      }
     }
   };
 
   // Load user preferences
   const loadUserPreferences = async () => {
-    if (!user?.uid) return;
+    if (!auth.currentUser) return;
     
     try {
-      const userDocRef = doc(db, 'users', user.uid);
+      const userDocRef = doc(db, 'users', auth.currentUser.uid);
       const unsubscribe = onSnapshot(userDocRef, (docSnapshot) => {
         if (docSnapshot.exists()) {
           const userData = docSnapshot.data();
           setUserPreferences(userData.preferences || []);
           console.log('✅ User preferences loaded:', userData.preferences);
         }
+      }, (error) => {
+        if (auth.currentUser) {
+          console.error('Error in user preferences listener:', error);
+        }
       });
       
-      return unsubscribe;
+      // Register cleanup with AuthContext
+      const unregister = registerCleanup(() => {
+        console.log('🧹 AuthContext cleanup: Unsubscribing from user preferences listener');
+        unsubscribe();
+      });
+      
+      return () => {
+        unsubscribe();
+        unregister();
+      };
     } catch (error) {
-      console.error('Error loading user preferences:', error);
+      if (auth.currentUser) {
+        console.error('Error loading user preferences:', error);
+      }
     }
   };
 
@@ -1540,8 +1561,24 @@ const HomeScreen = () => {
 
   // Load suggested places from Firestore (limited for horizontal scroll)
   const loadSuggestedPlaces = async () => {
+    // Don't load if user is not authenticated
+    if (!auth.currentUser) {
+      console.log('⚠️ loadSuggestedPlaces: User not authenticated, skipping');
+      setLoadingSuggested(false);
+      return;
+    }
+    
+    console.log('✅ loadSuggestedPlaces: User authenticated, loading...', auth.currentUser.uid);
+    
     try {
       setLoadingSuggested(true);
+      
+      // Check again before Firestore query
+      if (!auth.currentUser) {
+        setLoadingSuggested(false);
+        return;
+      }
+      
       // Load more businesses initially to ensure we have enough after preference filtering
       const limitCount = userPreferences && userPreferences.length > 0 ? 20 : 6;
       const q = query(
@@ -1551,6 +1588,12 @@ const HomeScreen = () => {
         limit(limitCount)
       );
       const querySnapshot = await getDocs(q);
+      
+      // Check again after async operation
+      if (!auth.currentUser) {
+        setLoadingSuggested(false);
+        return;
+      }
       
       const businesses = querySnapshot.docs.map(doc => {
         const data = doc.data();
@@ -1595,7 +1638,12 @@ const HomeScreen = () => {
       }).catch((error) => {
         console.log('⚠️ HomeScreen: Some suggested places images failed to preload:', error);
       });
-    } catch (error) {
+    } catch (error: any) {
+      // Don't log errors if user logged out during the query
+      if (!auth.currentUser) {
+        setLoadingSuggested(false);
+        return;
+      }
       console.error('Error loading suggested places:', error);
       // Fallback to dummy data if there's an error
       setSuggestedPlaces(fallbackSuggestedPlaces);
@@ -1606,14 +1654,36 @@ const HomeScreen = () => {
 
   // Load businesses from Firestore
   const loadPlacesToVisit = async () => {
+    // Don't load if user is not authenticated
+    if (!auth.currentUser) {
+      console.log('⚠️ loadPlacesToVisit: User not authenticated, skipping');
+      setLoadingPlaces(false);
+      return;
+    }
+    
+    console.log('✅ loadPlacesToVisit: User authenticated, loading...', auth.currentUser.uid);
+    
     try {
       setLoadingPlaces(true);
+      
+      // Check again before Firestore query (user might have logged out)
+      if (!auth.currentUser) {
+        setLoadingPlaces(false);
+        return;
+      }
+      
       const q = query(
         collection(db, 'businesses'),
         where('status', '==', 'approved'),
         where('displayInUserApp', '==', true)
       );
       const querySnapshot = await getDocs(q);
+      
+      // Check again after async operation
+      if (!auth.currentUser) {
+        setLoadingPlaces(false);
+        return;
+      }
       
       const businesses = querySnapshot.docs.map(doc => {
         const data = doc.data();
@@ -1664,6 +1734,11 @@ const HomeScreen = () => {
         console.log('⚠️ HomeScreen: Some images failed to preload:', error);
       });
     } catch (error) {
+      // Don't log errors if user logged out during the query
+      if (!auth.currentUser) {
+        setLoadingPlaces(false);
+        return;
+      }
       console.error('Error loading places to visit:', error);
       // Fallback to dummy data if there's an error
       const fallbackData = [
@@ -1685,9 +1760,21 @@ const HomeScreen = () => {
 
   // Load promotions from Firestore
   const loadPromosAndDeals = async () => {
+    // Check authentication before starting
+    if (!auth.currentUser) {
+      setLoadingPromos(false);
+      return;
+    }
+    
     try {
       setLoadingPromos(true);
       console.log('🔄 HomeScreen: Starting to load promotions...');
+      
+      // Check again before query
+      if (!auth.currentUser) {
+        setLoadingPromos(false);
+        return;
+      }
       
       // First, try the complex query with orderBy (requires index)
       let q = query(
@@ -1701,6 +1788,12 @@ const HomeScreen = () => {
       try {
         console.log('📊 HomeScreen: Attempting complex query with orderBy...');
         querySnapshot = await getDocs(q);
+        
+        // Check after async operation
+        if (!auth.currentUser) {
+          setLoadingPromos(false);
+          return;
+        }
         console.log('✅ HomeScreen: Complex query succeeded!');
       } catch (indexError) {
         console.warn('⚠️ HomeScreen: Complex query failed (likely missing index), trying simple query:', indexError);
@@ -1765,6 +1858,8 @@ const HomeScreen = () => {
         console.log('⚠️ HomeScreen: Some promo images failed to preload:', error);
       });
     } catch (error: any) {
+      if (!auth.currentUser) return;
+      
       console.error('❌ HomeScreen: Error loading promotions:', error);
       // Show more detailed error information
       if (error?.code === 'failed-precondition') {
@@ -1809,20 +1904,64 @@ const HomeScreen = () => {
         setUserPoints(points);
         setBusinessLoyaltyPoints(loyaltyPoints);
       }
+    }, (error) => {
+      // Ignore permission errors on logout
+      if (auth.currentUser) {
+        console.error('Error in user points listener:', error);
+      }
     });
 
-    return () => unsubscribe();
-  }, [user?.uid]);
+    // Register cleanup with AuthContext
+    const unregister = registerCleanup(() => {
+      console.log('🧹 AuthContext cleanup: Unsubscribing from user points listener');
+      unsubscribe();
+    });
+
+    return () => {
+      unsubscribe();
+      unregister();
+    };
+  }, [user?.uid, registerCleanup]);
 
   useEffect(() => {
+    // Only load data if user is authenticated
+    if (!user?.uid) {
+      // Clear all data when user logs out
+      setPlacesToVisit([]);
+      setSuggestedPlaces([]);
+      setPromosAndDeals([]);
+      setAllReviews([]);
+      setLoadingPlaces(false);
+      setLoadingSuggested(false);
+      setLoadingPromos(false);
+      setLoadingReviews(false);
+      return;
+    }
+    
+    console.log('🔄 HomeScreen: Loading initial data for user:', user.uid);
     getUserLocation(); // Get user's real location
     loadSavedBusinesses(); // Load saved businesses
-    loadUserPreferences(); // Load user preferences
+    
+    // loadUserPreferences returns a cleanup function for its listener
+    let preferencesCleanup: (() => void) | undefined;
+    loadUserPreferences().then(cleanup => {
+      if (cleanup) preferencesCleanup = cleanup;
+    });
+    
     loadSuggestedPlaces();
     loadPlacesToVisit();
     loadPromosAndDeals();
     loadAllReviews(); // Load all reviews
-  }, []);
+    
+    // Cleanup function - this runs when user logs out
+    return () => {
+      console.log('🧹 HomeScreen: Cleaning up data loading on user change');
+      if (preferencesCleanup) {
+        preferencesCleanup();
+      }
+      // Note: The async functions will still complete, but they check auth.currentUser before setting state
+    };
+  }, [user?.uid]);
 
   // Reload suggested places when user preferences change
   useEffect(() => {
@@ -1887,9 +2026,20 @@ const HomeScreen = () => {
 
   // Load all reviews from all businesses
   const loadAllReviews = async () => {
+    if (!auth.currentUser) {
+      setLoadingReviews(false);
+      return;
+    }
+    
     try {
       setLoadingReviews(true);
       const allReviewsList: any[] = [];
+      
+      // Check before query
+      if (!auth.currentUser) {
+        setLoadingReviews(false);
+        return;
+      }
       
       // Get all approved businesses
       const businessesQuery = query(
@@ -1898,6 +2048,12 @@ const HomeScreen = () => {
         where('displayInUserApp', '==', true)
       );
       const businessesSnapshot = await getDocs(businessesQuery);
+      
+      // Check after async operation
+      if (!auth.currentUser) {
+        setLoadingReviews(false);
+        return;
+      }
       
       // For each business, get their reviews
       for (const businessDoc of businessesSnapshot.docs) {
@@ -1935,6 +2091,11 @@ const HomeScreen = () => {
 
   // Real-time listener for reviews of all loaded businesses
   useEffect(() => {
+    // Don't set up listeners if user is not authenticated
+    if (!user?.uid) {
+      return;
+    }
+    
     if (!placesToVisit.length && !suggestedPlaces.length) return;
     const unsubscribes: (() => void)[] = [];
     
@@ -1958,6 +2119,11 @@ const HomeScreen = () => {
             count,
           },
         }));
+      }, (error) => {
+        // Ignore permission errors on logout
+        if (auth.currentUser) {
+          console.error('Error in reviews listener:', error);
+        }
       });
       unsubscribes.push(unsubscribe);
     });
@@ -1982,14 +2148,26 @@ const HomeScreen = () => {
             count,
           },
         }));
+      }, (error) => {
+        // Ignore permission errors on logout
+        if (auth.currentUser) {
+          console.error('Error in reviews listener:', error);
+        }
       });
       unsubscribes.push(unsubscribe);
     });
-    
+
+    // Register cleanup with AuthContext
+    const unregister = registerCleanup(() => {
+      console.log(`🧹 AuthContext cleanup: Unsubscribing from ${unsubscribes.length} review listeners`);
+      unsubscribes.forEach(unsub => unsub());
+    });
+
     return () => {
       unsubscribes.forEach(unsub => unsub());
+      unregister();
     };
-  }, [placesToVisit, suggestedPlaces]);
+  }, [user?.uid, placesToVisit, suggestedPlaces, registerCleanup]);
 
   // Sort suggested places by real ratings when businessRatings updates
   useEffect(() => {
