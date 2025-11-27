@@ -127,15 +127,6 @@ const FeedScreen = () => {
       backgroundColor: 'transparent',
       minHeight: 36,
     },
-    filterButton: {
-      padding: spacing.xs,
-      marginLeft: spacing.sm,
-      marginRight: spacing.xs,
-      minWidth: 44,
-      minHeight: 44,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
     listContent: {
       paddingBottom: responsiveHeight(12),
       paddingTop: headerTotalHeight + spacing.md, // Add spacing for better visual separation
@@ -895,12 +886,6 @@ const FeedScreen = () => {
               placeholderTextColor="#888"
               returnKeyType="search"
             />
-            <TouchableOpacity 
-              style={styles.filterButton}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="filter" size={iconSizes.lg} color="#888" />
-            </TouchableOpacity>
           </ResponsiveView>
         </ResponsiveView>
 

@@ -27,6 +27,8 @@ service cloud.firestore {
       allow write: if isAuthenticated() && isOwner(userId);
       // Allow creation during signup
       allow create: if isAuthenticated();
+      // Explicitly allow delete for account deletion
+      allow delete: if isAuthenticated() && isOwner(userId);
     }
     
     // Admin Users collection - For admin panel
@@ -133,19 +135,46 @@ service cloud.firestore {
     }
     
     // User tokens collection
-    match /userTokens/{userId} {
-      allow read, write: if isAuthenticated() && isOwner(userId);
-      allow create, update: if isAuthenticated();
+    match /userTokens/{tokenId} {
+      // If document ID is userId, check ownership
+      // If document has userId field, check that field
+      allow read: if isAuthenticated() && (
+        isOwner(tokenId) || 
+        resource.data.userId == request.auth.uid
+      );
+      allow create: if isAuthenticated() && (
+        isOwner(tokenId) || 
+        request.resource.data.userId == request.auth.uid
+      );
+      allow update: if isAuthenticated() && (
+        isOwner(tokenId) || 
+        resource.data.userId == request.auth.uid
+      );
+      // Allow delete if user owns the token
+      allow delete: if isAuthenticated() && (
+        isOwner(tokenId) || 
+        resource.data.userId == request.auth.uid
+      );
     }
     
     // Saved businesses collection
     match /savedBusinesses/{savedId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      // Allow write (create/update) if authenticated
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      // Allow delete if user owns the document
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
     
     // Places to visit
     match /placesToVisit/{placeId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      // Allow write (create/update) if authenticated
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      // Allow delete if user owns the document
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
     
     // Posts collection
@@ -156,7 +185,23 @@ service cloud.firestore {
     
     // Transactions collection
     match /transactions/{transactionId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      // Allow write (create/update) if authenticated
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      // Allow delete if user owns the document
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+    
+    // User Points collection - For reward points system
+    match /userPoints/{pointsId} {
+      allow read: if isAuthenticated();
+      // Allow create if user owns it
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      // Allow update if user owns it
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      // Allow delete if user owns the document
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
     
     // Reviews collection (top-level if exists)

@@ -11,13 +11,15 @@ import {
   StatusBar,
   Alert,
   ActivityIndicator,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { auth, db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { deleteUser } from "firebase/auth";
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { useResponsive } from '../../hooks/useResponsive';
 import { ResponsiveText, ResponsiveView } from '../../components';
 import Constants from 'expo-constants';
@@ -41,6 +43,9 @@ const SettingsScreen = () => {
   const [userFullName, setUserFullName] = useState<string>('');
   const [loadingUserData, setLoadingUserData] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Calculate responsive values
   const isSmallScreen = (dimensions?.width || 360) < 360;
@@ -107,29 +112,102 @@ const SettingsScreen = () => {
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Delete",
+          text: "Continue",
           style: "destructive",
           onPress: () => {
-            Alert.prompt(
-              "Confirm Deletion",
-              'To confirm, please type "DELETE" in the box below.',
-              (text) => {
-                if (text === "DELETE") {
-                  const user = auth.currentUser;
-                  if (user) {
-                    deleteUser(user).catch((error) => {
-                      Alert.alert("Error", "This operation requires recent authentication. Please log out and log back in to proceed.");
-                    });
-                  }
-                } else {
-                  Alert.alert("Error", "The text you entered was incorrect. Account deletion cancelled.");
-                }
-              }
-            );
+            setDeleteConfirmationText('');
+            setDeleteModalVisible(true);
           },
         },
       ]
     );
+  };
+
+  const handleConfirmDelete = async () => {
+    if (deleteConfirmationText.trim() === "Delete") {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        Alert.alert("Error", "No user found. Please log in again.");
+        setDeleteModalVisible(false);
+        setDeleteConfirmationText('');
+        return;
+      }
+
+      setIsDeleting(true);
+      try {
+        const userId = currentUser.uid;
+
+        // Delete user document from Firestore
+        const userDocRef = doc(db, 'users', userId);
+        await deleteDoc(userDocRef);
+
+        // Delete user's saved businesses
+        const savedBusinessesQuery = query(
+          collection(db, 'savedBusinesses'),
+          where('userId', '==', userId)
+        );
+        const savedBusinessesSnapshot = await getDocs(savedBusinessesQuery);
+        const savedBusinessesDeletes = savedBusinessesSnapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(savedBusinessesDeletes);
+
+        // Delete user's places to visit
+        const placesToVisitQuery = query(
+          collection(db, 'placesToVisit'),
+          where('userId', '==', userId)
+        );
+        const placesToVisitSnapshot = await getDocs(placesToVisitQuery);
+        const placesToVisitDeletes = placesToVisitSnapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(placesToVisitDeletes);
+
+        // Delete user's push tokens
+        const userTokensQuery = query(
+          collection(db, 'userTokens'),
+          where('userId', '==', userId)
+        );
+        const userTokensSnapshot = await getDocs(userTokensQuery);
+        const userTokensDeletes = userTokensSnapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(userTokensDeletes);
+
+        // Delete user's transactions
+        const transactionsQuery = query(
+          collection(db, 'transactions'),
+          where('userId', '==', userId)
+        );
+        const transactionsSnapshot = await getDocs(transactionsQuery);
+        const transactionsDeletes = transactionsSnapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(transactionsDeletes);
+
+        // Delete user's points data
+        const userPointsQuery = query(
+          collection(db, 'userPoints'),
+          where('userId', '==', userId)
+        );
+        const userPointsSnapshot = await getDocs(userPointsQuery);
+        const userPointsDeletes = userPointsSnapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(userPointsDeletes);
+
+        // Delete Firebase Auth account
+        await deleteUser(currentUser);
+
+        setIsDeleting(false);
+        setDeleteModalVisible(false);
+        setDeleteConfirmationText('');
+        Alert.alert("Success", "Your account and all associated data have been deleted.");
+      } catch (error: any) {
+        console.error('Error deleting account:', error);
+        setIsDeleting(false);
+        setDeleteModalVisible(false);
+        setDeleteConfirmationText('');
+        
+        if (error.code === 'auth/requires-recent-login') {
+          Alert.alert("Error", "This operation requires recent authentication. Please log out and log back in to proceed.");
+        } else {
+          Alert.alert("Error", `Failed to delete account: ${error.message || 'Unknown error'}`);
+        }
+      }
+    } else {
+      Alert.alert("Error", 'Please type "Delete" exactly to confirm account deletion.');
+    }
   };
 
   const handleHelpAndSupport = () => {
@@ -437,6 +515,130 @@ const SettingsScreen = () => {
           </Section>
         </ScrollView>
       </SafeAreaView>
+
+      {/* Delete Account Confirmation Modal */}
+      <Modal
+        visible={deleteModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          if (!isDeleting) {
+            setDeleteModalVisible(false);
+            setDeleteConfirmationText('');
+          }
+        }}
+      >
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: spacing?.lg || 20,
+        }}>
+          <View style={{
+            backgroundColor: theme === 'light' ? '#fff' : '#2d2d2d',
+            borderRadius: borderRadiusValues?.xl || 16,
+            padding: spacing?.lg || 20,
+            width: '100%',
+            maxWidth: 400,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.25,
+            shadowRadius: 3.84,
+            elevation: 5,
+          }}>
+            <ResponsiveText size="xl" weight="bold" color={theme === 'light' ? '#000' : '#fff'} style={{ marginBottom: spacing?.md || 16 }}>
+              Confirm Account Deletion
+            </ResponsiveText>
+            
+            <ResponsiveText size="md" color={theme === 'light' ? '#666' : '#aaa'} style={{ marginBottom: spacing?.md || 16 }}>
+              This action cannot be undone. To confirm, please type <Text style={{ fontWeight: 'bold', color: '#C53030' }}>"Delete"</Text> in the field below.
+            </ResponsiveText>
+
+            <TextInput
+              style={{
+                borderWidth: 1,
+                borderColor: theme === 'light' ? '#ddd' : '#555',
+                borderRadius: borderRadiusValues?.md || 8,
+                padding: spacing?.md || 12,
+                fontSize: fontSizes?.md || 16,
+                color: theme === 'light' ? '#000' : '#fff',
+                backgroundColor: theme === 'light' ? '#fff' : '#1a1a1a',
+                marginBottom: spacing?.lg || 20,
+                opacity: isDeleting ? 0.5 : 1,
+              }}
+              placeholder="Type 'Delete' to confirm"
+              placeholderTextColor={theme === 'light' ? '#999' : '#666'}
+              value={deleteConfirmationText}
+              onChangeText={setDeleteConfirmationText}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!isDeleting}
+            />
+
+            <View style={{
+              flexDirection: 'row',
+              justifyContent: 'flex-end',
+              gap: spacing?.md || 12,
+            }}>
+              <TouchableOpacity
+                onPress={() => {
+                  if (!isDeleting) {
+                    setDeleteModalVisible(false);
+                    setDeleteConfirmationText('');
+                  }
+                }}
+                style={{
+                  paddingHorizontal: spacing?.lg || 20,
+                  paddingVertical: spacing?.md || 12,
+                  borderRadius: borderRadiusValues?.md || 8,
+                  backgroundColor: theme === 'light' ? '#f0f0f0' : '#3a3a3a',
+                  minWidth: 80,
+                  alignItems: 'center',
+                  opacity: isDeleting ? 0.5 : 1,
+                }}
+                activeOpacity={0.7}
+                disabled={isDeleting}
+              >
+                <ResponsiveText size="md" weight="500" color={theme === 'light' ? '#000' : '#fff'}>
+                  Cancel
+                </ResponsiveText>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleConfirmDelete}
+                style={{
+                  paddingHorizontal: spacing?.lg || 20,
+                  paddingVertical: spacing?.md || 12,
+                  borderRadius: borderRadiusValues?.md || 8,
+                  backgroundColor: '#C53030',
+                  minWidth: 80,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: (deleteConfirmationText.trim() === "Delete" && !isDeleting) ? 1 : 0.5,
+                  flexDirection: 'row',
+                  gap: spacing?.sm || 8,
+                }}
+                activeOpacity={0.7}
+                disabled={deleteConfirmationText.trim() !== "Delete" || isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <ActivityIndicator size="small" color="#fff" />
+                    <ResponsiveText size="md" weight="500" color="#fff">
+                      Deleting...
+                    </ResponsiveText>
+                  </>
+                ) : (
+                  <ResponsiveText size="md" weight="500" color="#fff">
+                    Delete Account
+                  </ResponsiveText>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 };

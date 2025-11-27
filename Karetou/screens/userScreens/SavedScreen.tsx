@@ -17,10 +17,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
 import { db } from '../../firebase';
-import { collection, query, onSnapshot, doc, updateDoc, arrayRemove, getDoc, where } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc, arrayRemove, getDoc, where, getDocs } from 'firebase/firestore';
 import LoadingImage from '../../components/LoadingImage';
 import { useResponsive } from '../../hooks/useResponsive';
 import { ResponsiveText, ResponsiveView } from '../../components';
+import { useNavigation, NavigationProp } from '@react-navigation/native';
+import { FlatList as RNFlatList } from 'react-native';
 
 interface SavedItem {
   id: string;
@@ -56,7 +58,13 @@ const savedItems: SavedItem[] = [
   },
 ];
 
+type RootStackParamList = {
+  Navigate: { business?: any };
+  ReviewsScreen: { businessToView?: any };
+};
+
 const SavedScreen = () => {
+  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const [activeTab, setActiveTab] = useState('Places');
   const [savedPosts, setSavedPosts] = useState<Post[]>([]);
   const [savedBusinesses, setSavedBusinesses] = useState<any[]>([]);
@@ -64,6 +72,9 @@ const SavedScreen = () => {
   const [commentModalVisible, setCommentModalVisible] = useState(false);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [commentText, setCommentText] = useState('');
+  const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
+  const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+  const [businessRatings, setBusinessRatings] = useState<{ [businessId: string]: { average: string, count: number } }>({});
   const { theme, user, registerCleanup } = useAuth();
   
   // Get responsive values
@@ -136,10 +147,15 @@ const SavedScreen = () => {
             rating: data.rating || data.averageRating || 4.5,
             image: data.businessImages && data.businessImages.length > 0 
               ? data.businessImages[0] 
-              : 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?q=80&w=2487&auto=format&fit=crop',
-            businessType: data.businessType,
+              : 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?q=80&w=2574&auto=format&fit=crop',
+            businessType: data.selectedType || data.businessType,
             contactNumber: data.contactNumber,
             businessHours: data.businessHours,
+            openingTime: data.openingTime,
+            closingTime: data.closingTime,
+            businessLocation: data.businessLocation,
+            allImages: data.businessImages || [],
+            reviews: data.reviews || '0 Reviews',
           });
         });
         setSavedBusinesses(businesses);
@@ -158,6 +174,15 @@ const SavedScreen = () => {
       unregister();
     };
   }, [user?.uid, activeTab, registerCleanup]);
+
+  // Load ratings for saved businesses
+  useEffect(() => {
+    if (activeTab === 'Places' && savedBusinesses.length > 0) {
+      savedBusinesses.forEach((business) => {
+        loadBusinessRatings(business.id);
+      });
+    }
+  }, [savedBusinesses, activeTab]);
 
   const handleUnsavePost = async (postId: string) => {
     if (!user?.uid) return;
@@ -595,18 +620,261 @@ const SavedScreen = () => {
       paddingVertical: spacing?.lg || 16,
       fontSize: fontSizes?.sm || 12,
     },
+    // Business Details Modal styles
+    detailsOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    detailsContainer: {
+      width: (dimensions?.width || 375) * 0.9,
+      maxWidth: 500,
+      maxHeight: (dimensions?.height || 667) * 0.85,
+      backgroundColor: '#fff',
+      borderRadius: borderRadiusValues?.xl || 20,
+      overflow: 'hidden',
+    },
+    carouselWrapper: {
+      width: '100%',
+      aspectRatio: 16 / 9,
+      minHeight: isSmallScreen ? 180 : 220,
+      alignItems: 'center',
+    },
+    imageContainer: {
+      position: 'relative',
+      width: (dimensions?.width || 375) * 0.9,
+      aspectRatio: 16 / 9,
+      minHeight: isSmallScreen ? 150 : 200,
+      marginHorizontal: spacing?.lg || 16,
+      marginTop: spacing?.lg || 16,
+    },
+    detailsImage: {
+      width: '100%',
+      aspectRatio: 16 / 9,
+      minHeight: isSmallScreen ? 150 : 200,
+      resizeMode: 'cover',
+      borderRadius: borderRadiusValues?.md || 8,
+      borderWidth: 1,
+      borderColor: '#000',
+    },
+    swipeIndicator: {
+      position: 'absolute',
+      right: 10,
+      top: '50%',
+      transform: [{ translateY: -20 }],
+      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+      borderRadius: borderRadiusValues?.xl || 20,
+      padding: spacing?.sm || 8,
+      alignItems: 'center',
+    },
+    swipeText: {
+      color: '#fff',
+      fontWeight: '500',
+      marginTop: 2,
+      fontSize: fontSizes?.xs || 10,
+    },
+    detailsContent: {
+      padding: isSmallScreen ? (spacing?.md || 12) : (spacing?.lg || 16),
+    },
+    detailsTitle: {
+      fontWeight: 'bold',
+      color: '#333',
+      marginBottom: spacing?.xs || 4,
+      textAlign: 'center',
+      fontSize: fontSizes?.lg || 16,
+    },
+    detailsSubtitle: {
+      color: '#555',
+      marginBottom: spacing?.xs || 4,
+      textAlign: 'center',
+      fontSize: fontSizes?.md || 14,
+    },
+    detailsLocationLabel: {
+      fontWeight: '600',
+      color: '#667eea',
+      marginTop: spacing?.md || 12,
+      fontSize: fontSizes?.md || 14,
+    },
+    detailsLocation: {
+      color: '#777',
+      marginBottom: spacing?.sm || 8,
+      fontSize: fontSizes?.sm || 12,
+    },
+    ratingRowModal: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: spacing?.sm || 8,
+    },
+    ratingNumberModal: {
+      marginLeft: spacing?.xs || 4,
+      fontWeight: '600',
+      color: '#333',
+      fontSize: fontSizes?.md || 14,
+    },
+    reviewsTextModal: {
+      marginLeft: spacing?.xs || 4,
+      color: '#667eea',
+      fontSize: fontSizes?.sm || 12,
+    },
+    detailsSectionLabel: {
+      fontWeight: '600',
+      color: '#667eea',
+      marginTop: spacing?.md || 12,
+      fontSize: fontSizes?.md || 14,
+    },
+    detailsText: {
+      color: '#333',
+      marginTop: spacing?.xs || 4,
+      fontSize: fontSizes?.sm || 12,
+    },
+    viewMapBtn: {
+      marginTop: spacing?.lg || 16,
+      width: '100%',
+      backgroundColor: '#007AFF',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: spacing?.lg || 16,
+      paddingVertical: spacing?.md || 12,
+      borderRadius: borderRadiusValues?.md || 8,
+      minHeight: minTouchTarget,
+    },
+    viewMapText: {
+      color: '#fff',
+      fontWeight: '600',
+      marginLeft: spacing?.xs || 4,
+      fontSize: fontSizes?.md || 14,
+    },
+    viewReviewsBtn: {
+      marginTop: spacing?.md || 12,
+      width: '100%',
+      backgroundColor: '#667eea',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: spacing?.lg || 16,
+      paddingVertical: spacing?.md || 12,
+      borderRadius: 12,
+      minHeight: minTouchTarget,
+      elevation: 2,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+    },
+    viewReviewsText: {
+      color: '#fff',
+      fontWeight: '600',
+      marginLeft: spacing?.xs || 4,
+      fontSize: 16,
+    },
+    closeButtonModal: {
+      position: 'absolute',
+      top: spacing?.sm || 8,
+      right: spacing?.sm || 8,
+      zIndex: 2,
+      width: minTouchTarget,
+      height: minTouchTarget,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(255, 255, 255, 0.8)',
+      borderRadius: minTouchTarget / 2,
+    },
+    closeButtonText: {
+      fontSize: fontSizes?.xl || 20,
+      color: '#333',
+      fontWeight: '600',
+    },
   }), [spacing, fontSizes, iconSizes, borderRadiusValues, dimensions, isSmallScreen, isSmallDevice, minTouchTarget, headerPaddingTop, headerTotalHeight, responsiveHeight, theme]);
 
+  // Fetch full business data when a place is clicked
+  const fetchFullBusinessData = async (businessId: string) => {
+    try {
+      const businessDoc = await getDoc(doc(db, 'businesses', businessId));
+      if (businessDoc.exists()) {
+        const data = businessDoc.data();
+        return {
+          id: businessDoc.id,
+          name: data.businessName,
+          title: data.businessName,
+          location: data.businessAddress,
+          rating: data.rating || '4.5',
+          reviews: data.reviews || '0 Reviews',
+          image: data.businessImages && data.businessImages.length > 0 
+            ? data.businessImages[0] 
+            : 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?q=80&w=2487&auto=format&fit=crop',
+          businessType: data.selectedType || data.businessType,
+          categories: data.selectedCategories || (data.selectedCategory ? [data.selectedCategory] : []),
+          contactNumber: data.contactNumber,
+          businessHours: data.businessHours,
+          openingTime: data.openingTime,
+          closingTime: data.closingTime,
+          businessLocation: data.businessLocation,
+          allImages: data.businessImages || []
+        };
+      }
+      return null;
+    } catch (error) {
+      console.error('Error fetching business data:', error);
+      return null;
+    }
+  };
+
+  // Load business ratings
+  const loadBusinessRatings = async (businessId: string) => {
+    try {
+      const reviewsRef = collection(db, 'businesses', businessId, 'reviews');
+      const reviewsSnapshot = await getDocs(reviewsRef);
+      let total = 0;
+      let count = 0;
+      reviewsSnapshot.forEach(doc => {
+        const data = doc.data();
+        if (typeof data.rating === 'number') {
+          total += data.rating;
+          count++;
+        }
+      });
+      setBusinessRatings(prev => ({
+        ...prev,
+        [businessId]: {
+          average: count > 0 ? (total / count).toFixed(1) : '0.0',
+          count,
+        },
+      }));
+    } catch (error) {
+      console.error('Error loading business ratings:', error);
+    }
+  };
+
   const renderPlace = ({ item }: { item: any }) => (
-    <TouchableOpacity style={styles.card}>
+    <TouchableOpacity 
+      style={styles.card}
+      onPress={async () => {
+        const fullBusinessData = await fetchFullBusinessData(item.id);
+        if (fullBusinessData) {
+          setSelectedPlace(fullBusinessData);
+          loadBusinessRatings(item.id);
+          setDetailsModalVisible(true);
+        }
+      }}
+    >
       <ImageBackground source={{ uri: item.image }} style={styles.cardImage} imageStyle={{ borderRadius: borderRadiusValues.lg }} resizeMode="cover">
         <View style={styles.cardOverlay}>
           <View style={styles.cardHeader}>
             <View style={styles.rating}>
               <Ionicons name="star" size={iconSizes.sm} color="#FFD700" />
-              <ResponsiveText size="sm" weight="600" color="#fff" style={styles.ratingText}>{item.rating}</ResponsiveText>
+              <ResponsiveText size="sm" weight="600" color="#fff" style={styles.ratingText}>
+                {businessRatings[item.id]?.average || item.rating}
+              </ResponsiveText>
             </View>
-            <TouchableOpacity style={styles.bookmark} onPress={() => handleUnsaveBusiness(item.id)}>
+            <TouchableOpacity 
+              style={styles.bookmark} 
+              onPress={(e) => {
+                e.stopPropagation();
+                handleUnsaveBusiness(item.id);
+              }}
+            >
               <Ionicons name="bookmark" size={iconSizes.md} color="#fff" />
             </TouchableOpacity>
           </View>
@@ -843,6 +1111,102 @@ const SavedScreen = () => {
           </View>
         </SafeAreaView>
       </Modal>
+
+      {/* Business Details Modal */}
+      {selectedPlace && (
+        <Modal
+          visible={detailsModalVisible}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => {
+            setDetailsModalVisible(false);
+          }}
+        >
+          <View style={styles.detailsOverlay}>
+            <View style={styles.detailsContainer}>
+              {/* Image Carousel */}
+              <View style={styles.carouselWrapper}>
+                <RNFlatList
+                  data={selectedPlace.allImages && selectedPlace.allImages.length > 0 ? selectedPlace.allImages : [selectedPlace.image]}
+                  keyExtractor={(uri, idx) => uri + idx}
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  renderItem={({ item, index }) => (
+                    <View style={styles.imageContainer}>
+                      <LoadingImage source={{ uri: item }} style={styles.detailsImage} resizeMode="cover" />
+                      {index === 0 && (selectedPlace.allImages?.length > 1 || selectedPlace.image) && (
+                        <View style={styles.swipeIndicator}>
+                          <Ionicons name="chevron-forward" size={24} color="#fff" />
+                          <Text style={styles.swipeText}>Swipe</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                />
+              </View>
+              <View style={styles.detailsContent}>
+                <Text style={styles.detailsTitle}>{selectedPlace.name}</Text>
+                {selectedPlace.businessType ? (
+                  <Text style={styles.detailsSubtitle}>{selectedPlace.businessType}</Text>
+                ) : null}
+                {selectedPlace.location ? (
+                  <>
+                    <Text style={styles.detailsLocationLabel}>Location</Text>
+                    <Text style={styles.detailsLocation}>{selectedPlace.location}</Text>
+                  </>
+                ) : null}
+                {/* Rating Row */}
+                <View style={styles.ratingRowModal}>
+                  <Ionicons name="star" size={20} color="#FFD700" />
+                  <Text style={styles.ratingNumberModal}>
+                    {businessRatings[selectedPlace.id]?.average || selectedPlace.rating}
+                  </Text>
+                  <Text style={styles.reviewsTextModal}>
+                    ({businessRatings[selectedPlace.id]?.count ?? selectedPlace.reviews} {businessRatings[selectedPlace.id]?.count === 1 ? 'Review' : 'Reviews'})
+                  </Text>
+                </View>
+                <Text style={styles.detailsSectionLabel}>Business Hours</Text>
+                <Text style={styles.detailsText}>{selectedPlace.businessHours || 'Not specified'}</Text>
+                {/* View on Map Button */}
+                {(selectedPlace.businessLocation || selectedPlace.location) && (
+                  <TouchableOpacity
+                    style={styles.viewMapBtn}
+                    onPress={() => {
+                      setDetailsModalVisible(false);
+                      navigation.navigate('Navigate', { business: selectedPlace });
+                    }}
+                  >
+                    <Ionicons name="map" size={20} color="#fff" />
+                    <Text style={styles.viewMapText}> View on Map</Text>
+                  </TouchableOpacity>
+                )}
+                {/* View Reviews Button */}
+                <TouchableOpacity
+                  style={styles.viewReviewsBtn}
+                  onPress={() => {
+                    setDetailsModalVisible(false);
+                    (navigation as any).navigate('ReviewsScreen', {
+                      businessToView: {
+                        id: selectedPlace.id,
+                        name: selectedPlace.name,
+                        businessType: selectedPlace.businessType,
+                        businessAddress: selectedPlace.location || selectedPlace.businessAddress,
+                      }
+                    });
+                  }}
+                >
+                  <Ionicons name="star" size={20} color="#fff" />
+                  <Text style={styles.viewReviewsText}> View Reviews</Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity style={styles.closeButtonModal} onPress={() => setDetailsModalVisible(false)}>
+                <Text style={styles.closeButtonText}>×</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
     </LinearGradient>
   );

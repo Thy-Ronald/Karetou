@@ -1,0 +1,70 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user owns the resource
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Business registration files - allow business owners to upload their own files
+    match /business_registrations/{userId}/{fileName} {
+      // Allow authenticated users to upload their own registration files
+      allow write: if isAuthenticated() && isOwner(userId);
+      // Allow users to read their own registration files
+      allow read: if isAuthenticated() && isOwner(userId);
+      // Allow admins to read all registration files (for approval process)
+      allow read: if isAuthenticated() && request.auth.token.admin == true;
+    }
+    
+    // Business registration files (alternative path with hyphen)
+    match /business-registration/{userId}/{fileName} {
+      allow write: if isAuthenticated() && isOwner(userId);
+      allow read: if isAuthenticated() && isOwner(userId);
+      allow read: if isAuthenticated() && request.auth.token.admin == true;
+    }
+    
+    // User profile images
+    match /profile_images/{userId}/{fileName} {
+      allow write: if isAuthenticated() && isOwner(userId);
+      allow read: if isAuthenticated();
+    }
+    
+    // Business images (for approved businesses)
+    match /business_images/{businessId}/{fileName} {
+      allow read: if isAuthenticated();
+      // Only allow business owners to upload (will be checked via Firestore)
+      allow write: if isAuthenticated();
+    }
+    
+    // Post images
+    match /posts/{userId}/{fileName} {
+      allow write: if isAuthenticated() && isOwner(userId);
+      allow read: if isAuthenticated();
+    }
+    
+    // Review images
+    match /reviews/{reviewId}/{fileName} {
+      allow write: if isAuthenticated();
+      allow read: if isAuthenticated();
+    }
+    
+    // Promotion images
+    match /promotions/{promotionId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+    
+    // Default: deny all other access
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
