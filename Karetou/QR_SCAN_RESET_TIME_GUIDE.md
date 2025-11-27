@@ -233,3 +233,4 @@ After changing the reset time:
 - Update the message in `awardPointsForScan()` function
 - Ensure the message clearly states when they can scan again
 
+

@@ -112,3 +112,4 @@ Download Karetou today and start your journey through Silay City - where heritag
 - Include heritage house imagery
 - Highlight key features (Navigation, Rewards, Discovery)
 
+
