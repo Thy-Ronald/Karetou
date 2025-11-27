@@ -8,7 +8,7 @@ module.exports = {
   expo: {
     name: "Karetou",
     slug: "Karetou",
-    version: "1.0.0",
+    version: "1.0.1",
     orientation: "portrait",
     icon: "./assets/logo3.png",
     userInterfaceStyle: "light",
@@ -31,6 +31,7 @@ module.exports = {
         backgroundColor: "#ffffff"
       },
       package: "com.karetou.app",
+      versionCode: 2,
       edgeToEdgeEnabled: true,
       config: {
         googleMaps: {
