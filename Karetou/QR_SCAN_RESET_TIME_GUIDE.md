@@ -234,3 +234,4 @@ After changing the reset time:
 - Ensure the message clearly states when they can scan again
 
 
+

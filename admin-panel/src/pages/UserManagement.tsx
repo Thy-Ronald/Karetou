@@ -21,6 +21,10 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import {
   Search,
@@ -31,6 +35,7 @@ import {
   CalendarToday,
   CheckCircle,
   Block,
+  Business,
 } from '@mui/icons-material';
 import { collection, query, getDocs, doc, updateDoc, deleteDoc, addDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -45,12 +50,16 @@ interface User {
   businessId?: string;
   isActive: boolean;
   lastLogin?: string;
+  emailVerified?: boolean;
+  userType?: 'user' | 'business';
 }
 
 const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'business' | 'user'>('all');
   const [successMessage, setSuccessMessage] = useState('');
   const [error, setError] = useState('');
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
@@ -80,17 +89,23 @@ const UserManagement: React.FC = () => {
       
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        userData.push({
-          id: doc.id,
-          email: data.email || '',
-          fullName: data.fullName || '',
-          phoneNumber: data.phoneNumber || '',
-          createdAt: data.createdAt || new Date().toISOString(),
-          hasBusinessRegistration: data.hasBusinessRegistration || false,
-          businessId: data.businessId || undefined,
-          isActive: data.isActive !== undefined ? data.isActive : true, // Default to active for existing users
-          lastLogin: data.lastLogin || undefined,
-        } as User);
+        // Only include users with verified emails
+        const emailVerified = data.emailVerified === true;
+        if (emailVerified) {
+          userData.push({
+            id: doc.id,
+            email: data.email || '',
+            fullName: data.fullName || '',
+            phoneNumber: data.phoneNumber || '',
+            createdAt: data.createdAt || new Date().toISOString(),
+            hasBusinessRegistration: data.hasBusinessRegistration || false,
+            businessId: data.businessId || undefined,
+            isActive: data.isActive !== undefined ? data.isActive : true, // Default to active for existing users
+            lastLogin: data.lastLogin || undefined,
+            emailVerified: emailVerified,
+            userType: data.userType || 'user',
+          } as User);
+        }
       });
       
       setUsers(userData);
@@ -192,7 +207,19 @@ const UserManagement: React.FC = () => {
       (user.email?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
       (user.phoneNumber?.toLowerCase() || '').includes(searchTerm.toLowerCase());
 
-    return searchMatch;
+    // Filter by status
+    const statusMatch = 
+      statusFilter === 'all' || 
+      (statusFilter === 'active' && user.isActive && !needsDeactivation(user)) ||
+      (statusFilter === 'inactive' && (!user.isActive || needsDeactivation(user)));
+
+    // Filter by role
+    const roleMatch = 
+      roleFilter === 'all' ||
+      (roleFilter === 'business' && user.userType === 'business') ||
+      (roleFilter === 'user' && (user.userType === 'user' || !user.userType));
+
+    return searchMatch && statusMatch && roleMatch;
   });
 
   if (loading) {
@@ -241,7 +268,14 @@ const UserManagement: React.FC = () => {
         </Alert>
       )}
 
-      <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center', flexWrap: { xs: 'wrap', sm: 'nowrap' } }}>
+      <Box sx={{ 
+        mb: 3, 
+        display: 'flex', 
+        gap: { xs: 1.5, sm: 2 }, 
+        alignItems: { xs: 'stretch', sm: 'center' }, 
+        flexDirection: { xs: 'column', sm: 'row' },
+        flexWrap: 'wrap'
+      }}>
         <TextField
           placeholder="Search users by name or email..."
           value={searchTerm}
@@ -249,6 +283,7 @@ const UserManagement: React.FC = () => {
           sx={{ 
             flex: { xs: '1 1 100%', sm: '0 1 400px' }, 
             minWidth: { xs: '100%', sm: 300 },
+            width: { xs: '100%', sm: 'auto' },
             '& .MuiOutlinedInput-root': {
               borderRadius: 3,
               backgroundColor: '#f9f9f9',
@@ -280,11 +315,95 @@ const UserManagement: React.FC = () => {
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
-                <Search sx={{ color: '#667eea' }} />
+                <Search sx={{ color: '#667eea', fontSize: { xs: 20, sm: 24 } }} />
               </InputAdornment>
             ),
           }}
         />
+        <FormControl 
+          size="small" 
+          sx={{ 
+            minWidth: { xs: '100%', sm: 150 },
+            width: { xs: '100%', sm: 'auto' },
+            flex: { xs: '1 1 100%', sm: '0 1 auto' }
+          }}
+        >
+          <InputLabel sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>Status</InputLabel>
+          <Select
+            value={statusFilter}
+            label="Status"
+            onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}
+            sx={{
+              borderRadius: 3,
+              fontSize: { xs: '0.875rem', sm: '1rem' },
+              '& .MuiOutlinedInput-notchedOutline': {
+                borderColor: '#d0d0d0',
+              },
+              '&:hover .MuiOutlinedInput-notchedOutline': {
+                borderColor: '#667eea',
+              },
+              '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                borderColor: '#667eea',
+              },
+            }}
+          >
+            <MenuItem value="all" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>All</MenuItem>
+            <MenuItem value="active" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CheckCircle sx={{ fontSize: { xs: 16, sm: 18 }, color: '#4caf50' }} />
+                Active
+              </Box>
+            </MenuItem>
+            <MenuItem value="inactive" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Block sx={{ fontSize: { xs: 16, sm: 18 }, color: '#f44336' }} />
+                Inactive
+              </Box>
+            </MenuItem>
+          </Select>
+        </FormControl>
+        <FormControl 
+          size="small" 
+          sx={{ 
+            minWidth: { xs: '100%', sm: 180 },
+            width: { xs: '100%', sm: 'auto' },
+            flex: { xs: '1 1 100%', sm: '0 1 auto' }
+          }}
+        >
+          <InputLabel sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>Role</InputLabel>
+          <Select
+            value={roleFilter}
+            label="Role"
+            onChange={(e) => setRoleFilter(e.target.value as 'all' | 'business' | 'user')}
+            sx={{
+              borderRadius: 3,
+              fontSize: { xs: '0.875rem', sm: '1rem' },
+              '& .MuiOutlinedInput-notchedOutline': {
+                borderColor: '#d0d0d0',
+              },
+              '&:hover .MuiOutlinedInput-notchedOutline': {
+                borderColor: '#667eea',
+              },
+              '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                borderColor: '#667eea',
+              },
+            }}
+          >
+            <MenuItem value="all" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>All</MenuItem>
+            <MenuItem value="business" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Business sx={{ fontSize: { xs: 16, sm: 18 }, color: '#667eea' }} />
+                Business Owner
+              </Box>
+            </MenuItem>
+            <MenuItem value="user" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Person sx={{ fontSize: { xs: 16, sm: 18 }, color: '#666' }} />
+                Regular User
+              </Box>
+            </MenuItem>
+          </Select>
+        </FormControl>
       </Box>
 
       {/* Desktop Table View */}
@@ -395,8 +514,8 @@ const UserManagement: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={user.hasBusinessRegistration ? 'Business Owner' : 'Regular User'}
-                          color={user.hasBusinessRegistration ? 'primary' : 'default'}
+                          label={user.userType === 'business' ? 'Business Owner' : 'Regular User'}
+                          color={user.userType === 'business' ? 'primary' : 'default'}
                           size="small"
                           sx={{ fontSize: '0.75rem' }}
                         />
@@ -541,8 +660,8 @@ const UserManagement: React.FC = () => {
                     Business Status
                   </Typography>
                   <Chip
-                    label={user.hasBusinessRegistration ? 'Business Owner' : 'Regular User'}
-                    color={user.hasBusinessRegistration ? 'primary' : 'default'}
+                    label={user.userType === 'business' ? 'Business Owner' : 'Regular User'}
+                    color={user.userType === 'business' ? 'primary' : 'default'}
                     size="small"
                     sx={{ fontSize: '0.75rem' }}
                   />

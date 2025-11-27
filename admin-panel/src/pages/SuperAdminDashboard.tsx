@@ -104,11 +104,16 @@ const SuperAdminDashboard: React.FC = () => {
           startDate = new Date(0);
       }
 
-      // Group users by date
+      // Group users by date - only count verified users
       const dateMap = new Map<string, number>();
       
       usersSnapshot.forEach((doc) => {
         const data = doc.data();
+        // Only include users with verified emails
+        if (data.emailVerified !== true) {
+          return;
+        }
+        
         let userDate: Date;
         
         if (data.createdAt) {
@@ -176,13 +181,18 @@ const SuperAdminDashboard: React.FC = () => {
 
     try {
       setLoading(true);
-      // Fetch users count
+      // Fetch users count - only count verified users
       const usersSnapshot = await getDocs(collection(db, 'users'));
-      const totalUsers = usersSnapshot.size;
+      // Filter to only include users with verified emails
+      const verifiedUsers = usersSnapshot.docs.filter(doc => {
+        const data = doc.data();
+        return data.emailVerified === true;
+      });
+      const totalUsers = verifiedUsers.length;
       
-      // Count users needing deactivation
+      // Count users needing deactivation (only from verified users)
       let usersNeedingDeactivation = 0;
-      usersSnapshot.forEach((doc) => {
+      verifiedUsers.forEach((doc) => {
         const data = doc.data();
         // Check if user is active (default to true if not set) and needs deactivation
         const isActive = data.isActive !== undefined ? data.isActive : true;
