@@ -631,6 +631,7 @@ const DiscoverSilayScreen = () => {
       paddingVertical: spacing.sm,
       paddingHorizontal: spacing.lg,
       alignItems: 'center',
+      justifyContent: 'center',
       marginTop: spacing.sm,
       minHeight: minTouchTarget,
     },
@@ -638,6 +639,7 @@ const DiscoverSilayScreen = () => {
       color: '#fff',
       fontWeight: 'bold',
       fontSize: fontSizes.md,
+      textAlign: 'center',
     },
     // Detail Modal styles (matching HomeScreen design)
     detailModalOverlay: {
@@ -682,20 +684,22 @@ const DiscoverSilayScreen = () => {
       marginTop: spacing.xs,
       lineHeight: fontSizes.md * 1.4,
     },
-     detailModalCloseButton: {
-       backgroundColor: '#667eea',
-       borderRadius: borderRadiusValues.md,
-       paddingVertical: spacing.sm,
-       paddingHorizontal: spacing.lg,
-       alignItems: 'center',
-       marginTop: spacing.sm,
-       width: '100%',
-       minHeight: minTouchTarget,
-     },
+    detailModalCloseButton: {
+      backgroundColor: '#667eea',
+      borderRadius: borderRadiusValues.md,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: spacing.sm,
+      width: '100%',
+      minHeight: minTouchTarget,
+    },
     detailModalCloseButtonText: {
       color: '#fff',
       fontWeight: 'bold',
       fontSize: fontSizes.md,
+      textAlign: 'center',
     },
     detailModalImageCarousel: {
       width: '100%',

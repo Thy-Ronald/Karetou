@@ -28,6 +28,7 @@ import { useRoute, RouteProp } from '@react-navigation/native';
 import { useResponsive } from '../../hooks/useResponsive';
 import { ResponsiveText, ResponsiveView } from '../../components';
 import Constants from 'expo-constants';
+import FollowService from '../../services/FollowService';
 
 // Removed fixed dimensions - using responsive hook instead
 
@@ -357,6 +358,8 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 
 // Add this type for business details
 interface BusinessDetails {
+  id?: string;
+  userId?: string;
   name: string;
   businessType: string;
   location: string;
@@ -370,6 +373,7 @@ interface BusinessDetails {
   rating?: number;
   email?: string;
   website?: string;
+  followersCount?: number;
 }
 
 // Add route params type
@@ -381,7 +385,7 @@ type NavigateRouteProp = RouteProp<{ Navigate: NavigateRouteParams }, 'Navigate'
 
 const Navigate = () => {
   const route = useRoute<NavigateRouteProp>();
-  const { theme, registerCleanup } = useAuth();
+  const { theme, registerCleanup, user, loading: authLoading } = useAuth();
   const { spacing, fontSizes, iconSizes, borderRadius: borderRadiusValues, getResponsiveWidth, getResponsiveHeight, dimensions, responsiveHeight, responsiveWidth, responsiveFontSize } = useResponsive();
   const mapRef = useRef<MapView>(null);
   
@@ -414,6 +418,85 @@ const Navigate = () => {
   const [cachedLocation, setCachedLocation] = useState<Location.LocationObject | null>(null);
   const [isNavigationLoading, setIsNavigationLoading] = useState(false);
   const [routeCache, setRouteCache] = useState<Map<string, any>>(new Map());
+  const [followersCount, setFollowersCount] = useState(0);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
+  const [userFollows, setUserFollows] = useState<Set<string>>(new Set());
+  const followService = useRef(FollowService.getInstance()).current;
+  const followerUnsubRef = useRef<() => void>();
+
+  // Ensure we have a selectedPlace from navigation params (for immediate follow)
+  useEffect(() => {
+    if (!selectedPlace && route.params?.business) {
+      setSelectedPlace(route.params.business as any);
+    }
+  }, [route.params?.business, selectedPlace]);
+
+  // Listen to user's follow list to persist across sessions
+  useEffect(() => {
+    if (!user?.uid) {
+      setUserFollows(new Set());
+      return;
+    }
+    const followsRef = collection(db, 'users', user.uid, 'follows');
+    const unsubscribe = onSnapshot(followsRef, (snap) => {
+      const next = new Set<string>();
+      snap.forEach((doc) => next.add(doc.id));
+      setUserFollows(next);
+    }, (err) => {
+      console.error('Error listening to follows:', err);
+    });
+    return () => unsubscribe();
+  }, [user?.uid]);
+
+  // Sync isFollowing state with userFollows and selected business
+  useEffect(() => {
+    const businessId = selectedBusinessDetails?.id || selectedPlace?.id || route.params?.business?.id;
+    if (businessId && userFollows) {
+      const following = userFollows.has(businessId);
+      setIsFollowing(following);
+      if (selectedPlace && selectedPlace.id === businessId) {
+        setSelectedPlace({ ...selectedPlace, isFollowed: following } as any);
+      }
+    } else {
+      setIsFollowing(false);
+    }
+  }, [userFollows, selectedBusinessDetails?.id, selectedPlace?.id, route.params?.business?.id]);
+
+  // Real-time follower count updates
+  useEffect(() => {
+    const businessId = selectedBusinessDetails?.id || selectedPlace?.id || route.params?.business?.id;
+    if (!businessId) return;
+
+    // Clean previous listener
+    if (followerUnsubRef.current) {
+      followerUnsubRef.current();
+      followerUnsubRef.current = undefined;
+    }
+
+    const businessRef = doc(db, 'businesses', businessId);
+    const unsub = onSnapshot(businessRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        const count = data.followersCount || 0;
+        setFollowersCount(count);
+        setSelectedBusinessDetails((prev) => (prev?.id === businessId ? { ...prev, followersCount: count } as any : prev));
+      }
+    });
+    followerUnsubRef.current = unsub;
+
+    return () => {
+      if (followerUnsubRef.current) {
+        followerUnsubRef.current();
+        followerUnsubRef.current = undefined;
+      }
+    };
+  }, [selectedBusinessDetails?.id, selectedPlace?.id, route.params?.business?.id]);
+
+  // Reset follow state when user changes (e.g., login/logout)
+  useEffect(() => {
+    setIsFollowing(false);
+  }, [user?.uid]);
   const [nearbyBusinesses, setNearbyBusinesses] = useState<Place[]>([]);
   const [showNearbyModal, setShowNearbyModal] = useState(false);
   const [businessReviews, setBusinessReviews] = useState<{[key: string]: any[]}>({});
@@ -599,6 +682,43 @@ const Navigate = () => {
       flex: 1,
       minWidth: 0,
       flexWrap: 'wrap',
+    },
+    followRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: spacing.xs,
+      marginBottom: spacing.sm,
+      alignSelf: 'stretch',
+    },
+    followButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      borderWidth: 1.5,
+      borderColor: '#667eea',
+      backgroundColor: '#fff',
+      minWidth: 120,
+      gap: 6,
+    },
+    followButtonActive: {
+      backgroundColor: '#667eea',
+      borderColor: '#667eea',
+    },
+    followButtonDisabled: {
+      opacity: 0.6,
+    },
+    followButtonText: {
+      color: '#667eea',
+    },
+    followButtonTextActive: {
+      color: '#fff',
+    },
+    followersCountText: {
+      color: '#444',
     },
     timeRow: {
       flexDirection: 'row',
@@ -2290,7 +2410,26 @@ const Navigate = () => {
       const businessDoc = await getDoc(doc(db, 'businesses', businessId));
       if (businessDoc.exists()) {
         const data = businessDoc.data() as BusinessDetails;
-        setSelectedBusinessDetails(data);
+        const details: BusinessDetails = {
+          ...data,
+          id: businessDoc.id,
+          userId: (data as any).userId,
+          followersCount: (data as any).followersCount || 0,
+        };
+        setSelectedBusinessDetails(details);
+        setFollowersCount(details.followersCount || 0);
+
+      const currentUserId = user?.uid || auth.currentUser?.uid;
+      if (currentUserId) {
+        // Prefer live follow map
+        const following = userFollows.has(businessId);
+        setIsFollowing(following);
+        if (selectedPlace && selectedPlace.id === businessId) {
+          setSelectedPlace({ ...selectedPlace, isFollowed: following } as any);
+        }
+      } else {
+        setIsFollowing(false);
+      }
       } else {
         console.error('Business not found');
         setSelectedBusinessDetails(null);
@@ -2341,6 +2480,91 @@ const Navigate = () => {
       return unsubscribe;
     } catch (error) {
       console.error('Error fetching reviews for business:', businessId, error);
+    }
+  };
+
+  const toggleFollow = async () => {
+    console.log('🔵 toggleFollow called - Current state:', { isFollowing, followLoading });
+    const businessId = selectedBusinessDetails?.id || selectedPlace?.id || route.params?.business?.id;
+    const currentUserId = user?.uid || auth.currentUser?.uid;
+    console.log('🔵 toggleFollow IDs:', { businessId, currentUserId, selectedDetailsId: selectedBusinessDetails?.id, selectedPlaceId: selectedPlace?.id });
+    
+    if (!businessId) {
+      console.log('❌ No businessId found');
+      Alert.alert('Please wait', 'Unable to determine business. Please select a business again.');
+      return;
+    }
+    if (!currentUserId) {
+      console.log('❌ No currentUserId found');
+      Alert.alert('Login Required', 'Please sign in to follow businesses.');
+      return;
+    }
+    try {
+      console.log('🔵 Setting followLoading to true');
+      setFollowLoading(true);
+      
+      // Immediately update UI for better responsiveness
+      const newFollowState = !isFollowing;
+      setIsFollowing(newFollowState);
+      setFollowersCount((prev) => newFollowState ? prev + 1 : Math.max(0, prev - 1));
+      if (selectedPlace) {
+        setSelectedPlace({ ...selectedPlace, isFollowed: newFollowState } as any);
+      }
+      
+      console.log('🔵 Calling FollowService with newFollowState:', newFollowState);
+      
+      if (!newFollowState) {
+        // Was following, now unfollowing
+        const unfollowed = await followService.unfollowBusiness(currentUserId, businessId);
+        console.log('🔵 Unfollow result:', unfollowed);
+        if (!unfollowed) {
+          // Revert on failure
+          setIsFollowing(true);
+          setFollowersCount((prev) => prev + 1);
+          if (selectedPlace) {
+            setSelectedPlace({ ...selectedPlace, isFollowed: true } as any);
+          }
+          Alert.alert('Error', 'Failed to unfollow. Please try again.');
+        } else {
+          setUserFollows((prev) => {
+            const next = new Set(prev);
+            next.delete(businessId);
+            return next;
+          });
+        }
+      } else {
+        // Was not following, now following
+        const followed = await followService.followBusiness(
+          currentUserId,
+          businessId,
+          selectedBusinessDetails?.userId,
+          selectedBusinessDetails?.name || selectedPlace?.name || route.params?.business?.name
+        );
+        console.log('🔵 Follow result:', followed);
+        if (!followed) {
+          // Idempotent case (already followed) — keep optimistic state
+          console.log('ℹ️ Follow was already in place; keeping optimistic state.');
+        } else {
+          // Ensure followers map reflects success
+          setUserFollows((prev) => {
+            const next = new Set(prev);
+            next.add(businessId);
+            return next;
+          });
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error toggling follow:', error);
+      // Revert state on error
+      setIsFollowing(isFollowing);
+      setFollowersCount((prev) => isFollowing ? prev : Math.max(0, prev - 1));
+      if (selectedPlace) {
+        setSelectedPlace({ ...selectedPlace, isFollowed: isFollowing } as any);
+      }
+      Alert.alert('Error', 'Unable to update follow status. Please try again.');
+    } finally {
+      console.log('🔵 Setting followLoading to false');
+      setFollowLoading(false);
     }
   };
 
@@ -3654,6 +3878,35 @@ const Navigate = () => {
 
               {/* Content Container */}
               <View style={styles.contentContainer}>
+                {/* Follow row (always visible, even while details load) */}
+                <ResponsiveView style={styles.followRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.followButton,
+                      isFollowing && styles.followButtonActive,
+                      followLoading && styles.followButtonDisabled
+                    ]}
+                    onPress={toggleFollow}
+                    disabled={followLoading}
+                  >
+                    <Ionicons
+                      name={isFollowing ? 'heart' : 'heart-outline'}
+                      size={16}
+                      color={isFollowing ? '#fff' : '#667eea'}
+                    />
+                    <ResponsiveText
+                      size="sm"
+                      weight="600"
+                      style={[styles.followButtonText, isFollowing && styles.followButtonTextActive]}
+                    >
+                      {isFollowing ? 'Following' : 'Follow'}
+                    </ResponsiveText>
+                  </TouchableOpacity>
+                  <ResponsiveText size="sm" color="#666" style={styles.followersCountText}>
+                    {followersCount} follower{followersCount === 1 ? '' : 's'}
+                  </ResponsiveText>
+                </ResponsiveView>
+
                 {/* Show loading if details are not loaded */}
                 {!selectedBusinessDetails ? (
                   <ResponsiveView style={{ alignItems: 'center', paddingVertical: 40 }}>
@@ -3676,6 +3929,7 @@ const Navigate = () => {
                           {selectedBusinessDetails?.location || 'Location not available'}
                         </ResponsiveText>
                       </View>
+                      
                       {selectedBusinessDetails?.businessHours && (
                         <View style={styles.timeRow}>
                           <Ionicons name="time" size={iconSizes.sm} color="#666" />

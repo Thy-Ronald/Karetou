@@ -179,6 +179,16 @@ const MyBusinessScreen = () => {
 
   const filteredBusinesses = getFilteredBusinesses();
 
+  // Keep selectedBusiness in sync with real-time updates (e.g., followers count)
+  useEffect(() => {
+    if (selectedBusiness) {
+      const updated = businesses.find(b => b.id === selectedBusiness.id);
+      if (updated) {
+        setSelectedBusiness(updated);
+      }
+    }
+  }, [businesses, selectedBusiness?.id]);
+
   if (loading) {
     return (
       <LinearGradient colors={theme === 'light' ? lightGradient : darkGradient} style={styles.container}>
@@ -701,6 +711,16 @@ const MyBusinessScreen = () => {
                     <View style={styles.modalDetailTextContainer}>
                       <Text style={styles.modalDetailLabel}>Address</Text>
                       <Text style={styles.modalDetailValue}>{selectedBusiness?.businessAddress}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.modalDetailRow}>
+                    <Ionicons name="people" size={20} color="#667eea" />
+                    <View style={styles.modalDetailTextContainer}>
+                      <Text style={styles.modalDetailLabel}>Followers</Text>
+                      <Text style={styles.modalDetailValue}>
+                        {(selectedBusiness?.followersCount || 0)} follower{(selectedBusiness?.followersCount || 0) === 1 ? '' : 's'}
+                      </Text>
                     </View>
                   </View>
                 </View>

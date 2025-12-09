@@ -118,6 +118,22 @@ service cloud.firestore {
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated();
     }
+
+    // Followers subcollection
+    match /businesses/{businessId}/followers/{followerId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == followerId;
+      allow update: if false; // no updates, only create/delete
+      allow delete: if isAuthenticated() && request.auth.uid == followerId;
+    }
+
+    // User follows mirror: users/{userId}/follows/{businessId}
+    match /users/{userId}/follows/{businessId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if false;
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    }
     
     // Notifications collection
     match /notifications/{notificationId} {
