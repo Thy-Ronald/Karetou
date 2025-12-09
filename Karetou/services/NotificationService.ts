@@ -21,7 +21,19 @@ export interface NotificationData {
   title: string;
   body: string;
   data?: any;
-  type: 'business_approval' | 'business_rejection' | 'new_post' | 'promotion' | 'general' | 'new_review' | 'post_like' | 'post_comment' | 'business_reply' | 'new_place' | 'points_received';
+  type:
+    | 'business_approval'
+    | 'business_rejection'
+    | 'new_post'
+    | 'promotion'
+    | 'general'
+    | 'new_review'
+    | 'post_like'
+    | 'post_comment'
+    | 'business_reply'
+    | 'new_place'
+    | 'points_received'
+    | 'business_follow';
   userId: string;
   read: boolean;
   createdAt: string;
