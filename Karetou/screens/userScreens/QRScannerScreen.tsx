@@ -10,6 +10,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
+import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -27,8 +28,11 @@ const QRScannerScreen = () => {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [facing, setFacing] = useState<CameraType>('back');
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [locationDenied, setLocationDenied] = useState(false);
   const pointsService = PointsService.getInstance();
   const isProcessingRef = useRef(false);
+  const SCAN_RADIUS_METERS = 100; // Allowed radius for scanning business QR codes
   
   // Device size detection with fallbacks
   const isSmallScreen = (dimensions?.width || 360) < 360;
@@ -52,6 +56,29 @@ const QRScannerScreen = () => {
     }
   }, [permission]);
 
+  // Get user location for radius-based QR validation
+  useEffect(() => {
+    const getLocation = async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          setLocationDenied(true);
+          return;
+        }
+        const position = await Location.getCurrentPositionAsync({});
+        setUserLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+        setLocationDenied(false);
+      } catch (error) {
+        console.error('Error getting location:', error);
+      }
+    };
+
+    getLocation();
+  }, []);
+
   // Reset scanned state when screen comes into focus
   useFocusEffect(
     useCallback(() => {
@@ -59,6 +86,19 @@ const QRScannerScreen = () => {
       isProcessingRef.current = false;
     }, [])
   );
+
+  const calculateDistanceMeters = useCallback((lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const toRad = (value: number) => (value * Math.PI) / 180;
+    const R = 6371000; // meters
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }, []);
 
   const handleBarCodeScanned = async ({ type, data }: { type: string; data: string }) => {
     // Prevent multiple simultaneous scans
@@ -87,6 +127,67 @@ const QRScannerScreen = () => {
               Alert.alert(
                 'QR Scanning Disabled',
                 'This business has temporarily disabled QR scans.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      setScanned(false);
+                      isProcessingRef.current = false;
+                    },
+                  },
+                ]
+              );
+              return;
+            }
+
+            // Validate user is within allowed radius of the business
+            if (!businessData.businessLocation?.latitude || !businessData.businessLocation?.longitude) {
+              Alert.alert(
+                'Location Unavailable',
+                'This business has no location data set. QR scanning requires a valid business location.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      setScanned(false);
+                      isProcessingRef.current = false;
+                    },
+                  },
+                ]
+              );
+              return;
+            }
+
+            if (!userLocation) {
+              Alert.alert(
+                'Location Required',
+                locationDenied
+                  ? 'Please enable location permissions to scan business QR codes nearby.'
+                  : 'Unable to get your current location. Please try again.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      setScanned(false);
+                      isProcessingRef.current = false;
+                    },
+                  },
+                ]
+              );
+              return;
+            }
+
+            const distanceMeters = calculateDistanceMeters(
+              userLocation.latitude,
+              userLocation.longitude,
+              businessData.businessLocation.latitude,
+              businessData.businessLocation.longitude
+            );
+
+            if (distanceMeters > SCAN_RADIUS_METERS) {
+              Alert.alert(
+                'Too Far to Scan',
+                `Move closer to the business to scan (within ${SCAN_RADIUS_METERS} meters).`,
                 [
                   {
                     text: 'OK',
@@ -174,6 +275,12 @@ const QRScannerScreen = () => {
                 }
               }, 500);
             }
+
+            // Allow subsequent scans after handling this scan
+            setTimeout(() => {
+              setScanned(false);
+              isProcessingRef.current = false;
+            }, 600);
           } else {
             Alert.alert(
               'Business Not Found',
@@ -230,6 +337,7 @@ const QRScannerScreen = () => {
     } finally {
       // Reset processing flag after a delay to allow navigation
       setTimeout(() => {
+        setScanned(false);
         isProcessingRef.current = false;
       }, 2000);
     }

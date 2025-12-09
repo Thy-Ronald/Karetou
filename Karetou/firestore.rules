@@ -113,7 +113,8 @@ service cloud.firestore {
     
     // Reviews subcollection
     match /businesses/{businessId}/reviews/{reviewId} {
-      allow read: if isAuthenticated();
+      // Allow anyone to read reviews for display; writes still require auth
+      allow read: if true;
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated();
     }
