@@ -81,6 +81,24 @@ const QRScannerScreen = () => {
             const businessData = businessDoc.data();
             
             console.log('📱 QR Code Scanned - Business found:', businessData.businessName || qrData.name);
+
+            const qrEnabled = businessData.qrCodeEnabled !== false;
+            if (!qrEnabled) {
+              Alert.alert(
+                'QR Scanning Disabled',
+                'This business has temporarily disabled QR scans.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      setScanned(false);
+                      isProcessingRef.current = false;
+                    },
+                  },
+                ]
+              );
+              return;
+            }
             
             // Format business data for review form
             const businessForReview = {

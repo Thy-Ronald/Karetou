@@ -12,7 +12,8 @@ import {
   RefreshControl,
   Modal,
   FlatList,
-  ActivityIndicator
+  ActivityIndicator,
+  Switch
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -240,6 +241,45 @@ const MyBusinessScreen = () => {
       console.error('Error deleting business:', error);
       Alert.alert('Error', 'Failed to delete business. Please try again.');
     }
+  };
+
+  const updateBusinessToggle = async (
+    businessId: string,
+    field: 'rewardsEnabled' | 'qrCodeEnabled',
+    value: boolean
+  ) => {
+    try {
+      await updateDoc(doc(db, 'businesses', businessId), {
+        [field]: value,
+        updatedAt: new Date().toISOString(),
+      });
+
+      setSelectedBusiness((prev: any) => {
+        if (prev?.id === businessId) {
+          return { ...prev, [field]: value };
+        }
+        return prev;
+      });
+
+      setBusinesses((prev) =>
+        prev.map((biz) => (biz.id === businessId ? { ...biz, [field]: value } : biz))
+      );
+    } catch (error) {
+      console.error(`Error updating ${field}:`, error);
+      Alert.alert('Error', 'Failed to update setting. Please try again.');
+    }
+  };
+
+  const handleToggleRewards = (business: any) => {
+    if (!business) return;
+    const nextValue = business.rewardsEnabled === false ? true : false; // default to enabled
+    updateBusinessToggle(business.id, 'rewardsEnabled', nextValue);
+  };
+
+  const handleToggleQrCode = (business: any) => {
+    if (!business) return;
+    const nextValue = business.qrCodeEnabled === false ? true : false; // default to enabled
+    updateBusinessToggle(business.id, 'qrCodeEnabled', nextValue);
   };
 
   const handleChangeBusinessHours = (business: any) => {
@@ -579,9 +619,12 @@ const MyBusinessScreen = () => {
 
                 {selectedBusiness?.status === 'approved' && (
                   <TouchableOpacity 
-                    style={[styles.qrButton, downloadingQR && styles.qrButtonDisabled]}
+                    style={[
+                      styles.qrButton,
+                      (downloadingQR || selectedBusiness?.qrCodeEnabled === false) && styles.qrButtonDisabled
+                    ]}
                     onPress={() => handleDownloadQRCode(selectedBusiness)}
-                    disabled={downloadingQR}
+                    disabled={downloadingQR || selectedBusiness?.qrCodeEnabled === false}
                     activeOpacity={0.8}
                   >
                     <LinearGradient
@@ -596,7 +639,11 @@ const MyBusinessScreen = () => {
                         <Ionicons name="qr-code" size={22} color="#fff" />
                       )}
                       <Text style={styles.qrButtonText}>
-                        {downloadingQR ? 'Generating QR Code...' : 'Download QR Code'}
+                        {selectedBusiness?.qrCodeEnabled === false
+                          ? 'QR Disabled'
+                          : downloadingQR
+                            ? 'Generating QR Code...'
+                            : 'Download QR Code'}
                       </Text>
                     </LinearGradient>
                   </TouchableOpacity>
@@ -658,6 +705,41 @@ const MyBusinessScreen = () => {
                   </View>
                 </View>
 
+                {/* Rewards & QR Settings */}
+                <View style={styles.modalSection}>
+                  <Text style={styles.modalSectionTitle}>Rewards & QR Settings</Text>
+
+                  <View style={styles.toggleRow}>
+                    <View style={styles.toggleTextContainer}>
+                      <Text style={styles.modalDetailLabel}>Rewards System</Text>
+                      <Text style={styles.toggleDescription}>
+                        Allow customers to earn loyalty points from QR scans.
+                      </Text>
+                    </View>
+                    <Switch
+                      value={selectedBusiness?.rewardsEnabled !== false}
+                      onValueChange={() => handleToggleRewards(selectedBusiness)}
+                      thumbColor={selectedBusiness?.rewardsEnabled === false ? '#ccc' : '#667eea'}
+                      trackColor={{ false: '#e0e0e0', true: '#c7d2fe' }}
+                    />
+                  </View>
+
+                  <View style={styles.toggleRow}>
+                    <View style={styles.toggleTextContainer}>
+                      <Text style={styles.modalDetailLabel}>QR Code Scanning</Text>
+                      <Text style={styles.toggleDescription}>
+                        Enable or disable QR scans for this business (affects reviews and rewards).
+                      </Text>
+                    </View>
+                    <Switch
+                      value={selectedBusiness?.qrCodeEnabled !== false}
+                      onValueChange={() => handleToggleQrCode(selectedBusiness)}
+                      thumbColor={selectedBusiness?.qrCodeEnabled === false ? '#ccc' : '#667eea'}
+                      trackColor={{ false: '#e0e0e0', true: '#c7d2fe' }}
+                    />
+                  </View>
+                </View>
+
                 {/* Registration Info */}
                 <View style={styles.modalSection}>
                   <Text style={styles.modalSectionTitle}>Registration Information</Text>
@@ -709,17 +791,25 @@ const MyBusinessScreen = () => {
                 {selectedBusiness && (
                   <>
                     <Text style={styles.qrBusinessName}>{selectedBusiness.businessName}</Text>
-                    <QRCode
-                      value={generateQRCodeData(selectedBusiness)}
-                      size={250}
-                      color="#000000"
-                      backgroundColor="#FFFFFF"
-                    />
-                    <Text style={styles.qrBusinessInfo}>{selectedBusiness.selectedType}</Text>
-                    {selectedBusiness.businessAddress && (
-                      <Text style={styles.qrBusinessAddress} numberOfLines={2}>
-                        {selectedBusiness.businessAddress}
+                    {selectedBusiness.qrCodeEnabled === false ? (
+                      <Text style={styles.qrDisabledText}>
+                        QR scanning is currently disabled for this business.
                       </Text>
+                    ) : (
+                      <>
+                        <QRCode
+                          value={generateQRCodeData(selectedBusiness)}
+                          size={250}
+                          color="#000000"
+                          backgroundColor="#FFFFFF"
+                        />
+                        <Text style={styles.qrBusinessInfo}>{selectedBusiness.selectedType}</Text>
+                        {selectedBusiness.businessAddress && (
+                          <Text style={styles.qrBusinessAddress} numberOfLines={2}>
+                            {selectedBusiness.businessAddress}
+                          </Text>
+                        )}
+                      </>
                     )}
                   </>
                 )}
@@ -1097,6 +1187,22 @@ const styles = StyleSheet.create({
     color: '#333',
     fontWeight: '500',
   },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    gap: 12,
+  },
+  toggleTextContainer: {
+    flex: 1,
+    marginRight: 10,
+  },
+  toggleDescription: {
+    fontSize: 13,
+    color: '#777',
+    marginTop: 2,
+  },
   topButtonContainer: {
     flexDirection: 'column',
     justifyContent: 'flex-start',
@@ -1254,6 +1360,12 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 15,
     textAlign: 'center',
+  },
+  qrDisabledText: {
+    fontSize: 15,
+    color: '#f44336',
+    textAlign: 'center',
+    marginTop: 10,
   },
   qrBusinessAddress: {
     fontSize: 12,

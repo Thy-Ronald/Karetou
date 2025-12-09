@@ -171,7 +171,30 @@ class PointsService {
       }
 
       // Get business points value
-      const pointsToAward = await this.getBusinessPoints(businessId);
+      const businessDoc = await getDoc(doc(db, 'businesses', businessId));
+      if (!businessDoc.exists()) {
+        return {
+          success: false,
+          pointsEarned: 0,
+          message: 'Business not found.',
+        };
+      }
+
+      const businessData = businessDoc.data();
+
+      if (businessData.qrCodeEnabled === false) {
+        return {
+          success: false,
+          pointsEarned: 0,
+          message: 'QR scanning is disabled for this business.',
+        };
+      }
+
+      // Get business points value
+      const rewardsEnabled = businessData.rewardsEnabled !== false;
+      const pointsToAward = rewardsEnabled
+        ? businessData.rewardPoints || (await this.getBusinessPoints(businessId))
+        : 0;
 
       // Get current user points
       const userPoints = await this.getUserPoints(userId);
@@ -184,8 +207,7 @@ class PointsService {
       };
 
       // Get business name for loyalty tracking
-      const businessDoc = await getDoc(doc(db, 'businesses', businessId));
-      const businessName = businessDoc.exists() ? businessDoc.data().businessName || 'Unknown Business' : 'Unknown Business';
+      const businessName = businessData.businessName || 'Unknown Business';
 
       const updatedHistory = [...userPoints.scanHistory, newScan];
       const updatedTotalPoints = userPoints.totalPoints + pointsToAward;
@@ -229,7 +251,9 @@ class PointsService {
       return {
         success: true,
         pointsEarned: pointsToAward,
-        message: `🎉 You earned ${pointsToAward} points!`,
+        message: rewardsEnabled
+          ? `🎉 You earned ${pointsToAward} points!`
+          : 'Scan recorded. Rewards are currently disabled for this business.',
       };
     } catch (error) {
       console.error('Error awarding points:', error);
