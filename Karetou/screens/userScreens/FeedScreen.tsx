@@ -7,8 +7,10 @@ import { db } from '../../firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, arrayUnion, arrayRemove, addDoc, getDoc } from 'firebase/firestore';
 import LoadingImage from '../../components/LoadingImage';
 import NotificationService from '../../services/NotificationService';
+import FollowService from '../../services/FollowService';
 import { useResponsive } from '../../hooks/useResponsive';
 import { ResponsiveText, ResponsiveView, ResponsiveCard, ResponsiveButton } from '../../components';
+import { useNavigation, NavigationProp } from '@react-navigation/native';
 
 interface Post {
   id: string;
@@ -25,7 +27,12 @@ interface Post {
   ownerProfileImage?: string;
 }
 
+type RootStackParamList = {
+  FollowingListScreen: undefined;
+};
+
 const FeedScreen = () => {
+  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [posts, setPosts] = useState<Post[]>([]);
@@ -37,8 +44,10 @@ const FeedScreen = () => {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentText, setEditCommentText] = useState('');
   const [showDropdown, setShowDropdown] = useState<string | null>(null);
+  const [followedBusinessIds, setFollowedBusinessIds] = useState<Set<string>>(new Set());
   
   const { theme, user, registerCleanup } = useAuth();
+  const followService = FollowService.getInstance();
   const { spacing, fontSizes, iconSizes, borderRadius: borderRadiusValues, getResponsiveWidth, getResponsiveHeight, dimensions, responsiveHeight, responsiveWidth, responsiveFontSize } = useResponsive();
   
   // Calculate responsive dimensions
@@ -53,12 +62,13 @@ const FeedScreen = () => {
     ? spacing.md + (dimensions.isSmallDevice ? spacing.xs : spacing.sm)
     : statusBarHeight + spacing.sm; // Reduced padding for Android
   
-  // Calculate total header height: paddingTop + title height + margin + search bar height + paddingBottom
-  const headerTitleHeight = fontSizes.xl * 1.2 + spacing.xs; // Title height with line height
-  const headerMarginBottom = spacing.md;
-  const searchBarHeight = 44; // minHeight from searchBarContainer
+  // Calculate total header height: paddingTop + headerContent + margin + search bar + paddingBottom
+  const headerContentHeight = minTouchTarget; // Height of the header row with title and following button
+  const headerContentMarginBottom = spacing.md; // Margin below headerContent
+  const searchBarHeight = minTouchTarget; // minHeight from searchBarContainer
+  const searchBarMarginTop = 0; // No margin top for search bar (it's directly below headerContent)
   const headerPaddingBottom = spacing.md;
-  const headerTotalHeight = headerPaddingTop + headerTitleHeight + headerMarginBottom + searchBarHeight + headerPaddingBottom;
+  const headerTotalHeight = headerPaddingTop + headerContentHeight + headerContentMarginBottom + searchBarMarginTop + searchBarHeight + headerPaddingBottom;
 
   const lightGradient = ['#F5F5F5', '#F5F5F5'] as const;
   const darkGradient = ['#232526', '#414345'] as const;
@@ -97,9 +107,15 @@ const FeedScreen = () => {
     headerContent: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
+      justifyContent: 'space-between',
       paddingHorizontal: isSmallScreen ? spacing.md : spacing.lg,
       marginBottom: spacing.md,
+      minHeight: minTouchTarget,
+    },
+    followingButton: {
+      padding: spacing.xs,
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     headerTitle: {
       fontSize: fontSizes.xl,
@@ -476,6 +492,26 @@ const FeedScreen = () => {
     },
   }), [spacing, fontSizes, borderRadiusValues, dimensions, responsiveHeight, responsiveWidth, isSmallScreen, headerPaddingTop, headerTotalHeight, theme]);
 
+  // Listen to user's follow list in real-time
+  useEffect(() => {
+    if (!user?.uid) {
+      setFollowedBusinessIds(new Set());
+      return;
+    }
+
+    const followsRef = collection(db, 'users', user.uid, 'follows');
+    const unsubscribe = onSnapshot(followsRef, (snap) => {
+      const next = new Set<string>();
+      snap.forEach((doc) => next.add(doc.id));
+      setFollowedBusinessIds(next);
+    }, (err) => {
+      console.error('Error listening to follows:', err);
+      setFollowedBusinessIds(new Set());
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid]);
+
   // Real-time posts listener
   useEffect(() => {
     const postsQuery = query(
@@ -535,7 +571,7 @@ const FeedScreen = () => {
       unsubscribe();
       unregister();
     };
-  }, [registerCleanup]);
+  }, [registerCleanup, followedBusinessIds]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -760,10 +796,19 @@ const FeedScreen = () => {
     return date.toLocaleDateString();
   };
 
-  const filteredPosts = posts.filter(post =>
-    (post.businessName || '').toLowerCase().includes(search.toLowerCase()) ||
-    (post.content || '').toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredPosts = useMemo(() => {
+    return posts.filter(post => {
+      // Only show posts from businesses the user follows
+      if (!followedBusinessIds.has(post.businessId)) {
+        return false;
+      }
+      // Apply search filter
+      return (
+        (post.businessName || '').toLowerCase().includes(search.toLowerCase()) ||
+        (post.content || '').toLowerCase().includes(search.toLowerCase())
+      );
+    });
+  }, [posts, followedBusinessIds, search]);
 
   const renderPost = ({ item }: { item: Post }) => {
     const isLiked = (item.likes || []).includes(user?.uid || '');
@@ -874,6 +919,13 @@ const FeedScreen = () => {
             <ResponsiveText size="xl" weight="bold" color="#000" style={styles.headerTitle}>
               Feed
             </ResponsiveText>
+            <TouchableOpacity
+              style={[styles.followingButton, { minWidth: minTouchTarget, minHeight: minTouchTarget }]}
+              onPress={() => navigation.navigate('FollowingListScreen')}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="people-outline" size={iconSizes.lg} color="#667eea" />
+            </TouchableOpacity>
           </ResponsiveView>
           {/* Search Bar */}
           <ResponsiveView style={styles.searchBarContainer}>
@@ -914,10 +966,12 @@ const FeedScreen = () => {
               <ResponsiveView style={styles.emptyContainer}>
                 <Ionicons name="newspaper-outline" size={iconSizes.xxxl} color="#ccc" />
                 <ResponsiveText size="lg" weight="600" color="#000" style={styles.emptyText}>
-                  No posts yet
+                  {followedBusinessIds.size === 0 ? 'No businesses followed' : 'No posts yet'}
                 </ResponsiveText>
                 <ResponsiveText size="md" color="#666" style={styles.emptySubtext}>
-                  Posts from businesses will appear here
+                  {followedBusinessIds.size === 0 
+                    ? 'Follow businesses to see their posts in your feed'
+                    : 'Posts from businesses you follow will appear here'}
                 </ResponsiveText>
               </ResponsiveView>
             }

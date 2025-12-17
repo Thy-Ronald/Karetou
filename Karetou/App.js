@@ -29,6 +29,7 @@ import DiscoverSilayScreen from './screens/userScreens/DiscoverSilayScreen';
 import QRScannerScreen from './screens/userScreens/QRScannerScreen';
 import TransactionHistoryScreen from './screens/userScreens/TransactionHistoryScreen';
 import BusinessTransactionHistoryScreen from './screens/userScreens/businessOwnerScreens/BusinessTransactionHistoryScreen';
+import FollowingListScreen from './screens/userScreens/FollowingListScreen';
 
 
 const Stack = createStackNavigator();
@@ -67,6 +68,7 @@ const UserAppStack = () => (
     <Stack.Screen name="DiscoverSilay" component={DiscoverSilayScreen} />
     <Stack.Screen name="QRScannerScreen" component={QRScannerScreen} />
     <Stack.Screen name="TransactionHistoryScreen" component={TransactionHistoryScreen} />
+    <Stack.Screen name="FollowingListScreen" component={FollowingListScreen} />
   </Stack.Navigator>
 );
 

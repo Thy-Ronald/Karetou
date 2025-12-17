@@ -1,5 +1,5 @@
 import { db } from '../firebase';
-import { doc, getDoc, setDoc, deleteDoc, runTransaction, increment } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, runTransaction, increment, collection, getDocs } from 'firebase/firestore';
 import NotificationService from './NotificationService';
 
 class FollowService {
@@ -122,6 +122,18 @@ class FollowService {
     });
 
     return didUnfollow;
+  }
+
+  async getFollowedBusinesses(userId: string): Promise<string[]> {
+    if (!userId) return [];
+    try {
+      const followsRef = collection(db, 'users', userId, 'follows');
+      const snapshot = await getDocs(followsRef);
+      return snapshot.docs.map(doc => doc.id);
+    } catch (error) {
+      console.error('Error getting followed businesses:', error);
+      return [];
+    }
   }
 }
 
