@@ -24,6 +24,7 @@ import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { useAuth } from '../../contexts/AuthContext';
 import { auth, db } from '../../firebase';
 import PointsService from '../../services/PointsService';
+import FollowService from '../../services/FollowService';
 import { collection, query, getDocs, where, orderBy, limit, addDoc, doc, onSnapshot, updateDoc, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
 import LoadingImage from '../../components/LoadingImage';
 import NotificationService from '../../services/NotificationService';
@@ -248,6 +249,9 @@ const HomeScreen = () => {
   const [allReviews, setAllReviews] = useState<any[]>([]);
   const [loadingReviews, setLoadingReviews] = useState(true);
   const [preferencesModalVisible, setPreferencesModalVisible] = useState(false);
+  const [userFollows, setUserFollows] = useState<Set<string>>(new Set());
+  const [followLoading, setFollowLoading] = useState(false);
+  const followService = FollowService.getInstance();
 
   // Get responsive values from hook for dynamic styles
   const { dimensions } = useResponsive();
@@ -769,6 +773,32 @@ const HomeScreen = () => {
       shadowRadius: 4,
     },
     viewReviewsText: {
+      color: '#fff',
+      fontWeight: '600',
+      marginLeft: spacing.xs,
+      fontSize: 16,
+    },
+    followButton: {
+      marginTop: spacing.md,
+      width: '100%',
+      backgroundColor: '#667eea',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+      borderRadius: 12,
+      minHeight: 44, // Ensure touch target is at least 44px
+      elevation: 2,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+    },
+    followButtonActive: {
+      backgroundColor: '#4CAF50',
+    },
+    followButtonText: {
       color: '#fff',
       fontWeight: '600',
       marginLeft: spacing.xs,
@@ -1372,6 +1402,65 @@ const HomeScreen = () => {
       console.error('Error toggling business save:', error);
     }
   };
+
+  // Handle following/unfollowing businesses
+  const handleFollowBusiness = async (businessId: string, businessName: string, businessOwnerId?: string) => {
+    if (!user?.uid) return;
+
+    try {
+      setFollowLoading(true);
+      const isFollowing = userFollows.has(businessId);
+
+      if (isFollowing) {
+        // Unfollow
+        const unfollowed = await followService.unfollowBusiness(user.uid, businessId);
+        if (!unfollowed) {
+          Alert.alert('Error', 'Failed to unfollow. Please try again.');
+        }
+      } else {
+        // Follow
+        await followService.followBusiness(
+          user.uid,
+          businessId,
+          businessOwnerId,
+          businessName
+        );
+      }
+    } catch (error) {
+      console.error('Error toggling follow:', error);
+      Alert.alert('Error', 'Unable to update follow status. Please try again.');
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
+  // Real-time listener for user's follow list
+  useEffect(() => {
+    if (!user?.uid) {
+      setUserFollows(new Set());
+      return;
+    }
+
+    const followsRef = collection(db, 'users', user.uid, 'follows');
+    const unsubscribe = onSnapshot(followsRef, (snap) => {
+      const next = new Set<string>();
+      snap.forEach((doc) => next.add(doc.id));
+      setUserFollows(next);
+    }, (err) => {
+      console.error('Error listening to follows:', err);
+    });
+
+    // Register cleanup with AuthContext
+    const unregister = registerCleanup(() => {
+      console.log('🧹 AuthContext cleanup: Unsubscribing from HomeScreen follows listener');
+      unsubscribe();
+    });
+
+    return () => {
+      unsubscribe();
+      unregister();
+    };
+  }, [user?.uid, registerCleanup]);
 
   // Real-time listener for saved businesses
   useEffect(() => {
@@ -2801,6 +2890,36 @@ const HomeScreen = () => {
                   <Ionicons name="star" size={20} color="#fff" />
                   <Text style={styles.viewReviewsText}> View Reviews</Text>
                 </TouchableOpacity>
+                {/* Follow Button */}
+                {user?.uid && (
+                  <TouchableOpacity
+                    style={[
+                      styles.followButton,
+                      userFollows.has(selectedPlace.id) && styles.followButtonActive
+                    ]}
+                    onPress={() => handleFollowBusiness(
+                      selectedPlace.id,
+                      selectedPlace.name,
+                      selectedPlace.userId || selectedPlace.ownerId
+                    )}
+                    disabled={followLoading}
+                  >
+                    {followLoading ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <Ionicons 
+                          name={userFollows.has(selectedPlace.id) ? "person" : "person-add-outline"} 
+                          size={20} 
+                          color="#fff" 
+                        />
+                        <Text style={styles.followButtonText}>
+                          {userFollows.has(selectedPlace.id) ? ' Following' : ' Follow'}
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
               </View>
               <TouchableOpacity style={styles.closeButtonModal} onPress={() => setDetailsModalVisible(false)}>
                 <Text style={styles.closeButtonText}>×</Text>
