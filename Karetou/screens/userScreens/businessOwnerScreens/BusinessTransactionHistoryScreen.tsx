@@ -65,64 +65,99 @@ const BusinessTransactionHistoryScreen = () => {
     });
   };
 
-  const renderTransaction = ({ item }: { item: Transaction }) => (
-    <View style={[
-      styles.transactionCard,
-      { backgroundColor: theme === 'dark' ? '#2a2a2a' : '#fff' }
-    ]}>
-      <View style={styles.transactionHeader}>
-        <View style={styles.transactionIconContainer}>
-          <Ionicons 
-            name="arrow-down-circle" 
-            size={iconSizes.xxl} 
-            color="#4CAF50" 
-          />
+  const renderTransaction = ({ item }: { item: Transaction }) => {
+    const isRewardClaimed = item.type === 'reward_claimed';
+    
+    return (
+      <View style={[
+        styles.transactionCard,
+        { backgroundColor: theme === 'dark' ? '#2a2a2a' : '#fff' }
+      ]}>
+        <View style={styles.transactionHeader}>
+          <View style={styles.transactionIconContainer}>
+            <Ionicons 
+              name={isRewardClaimed ? "gift" : "arrow-down-circle"} 
+              size={iconSizes.xxl} 
+              color={isRewardClaimed ? "#9C27B0" : "#4CAF50"} 
+            />
+          </View>
+          <View style={styles.transactionInfo}>
+            {isRewardClaimed && item.rewardName ? (
+              <>
+                <ResponsiveText 
+                  size="md" 
+                  weight="600" 
+                  color={theme === 'dark' ? '#FFF' : '#333'} 
+                  style={styles.senderName}
+                  numberOfLines={1}
+                >
+                  🎁 {item.rewardName}
+                </ResponsiveText>
+                <ResponsiveText 
+                  size="sm" 
+                  color={theme === 'dark' ? '#AAA' : '#666'} 
+                  style={styles.businessName}
+                  numberOfLines={1}
+                >
+                  Claimed by {item.userName}
+                </ResponsiveText>
+                <ResponsiveText 
+                  size="xs" 
+                  color={theme === 'dark' ? '#AAA' : '#666'} 
+                  style={styles.transactionDate}
+                >
+                  {item.businessName} • {formatDate(item.timestamp)}
+                </ResponsiveText>
+              </>
+            ) : (
+              <>
+                <ResponsiveText 
+                  size="md" 
+                  weight="600" 
+                  color={theme === 'dark' ? '#FFF' : '#333'} 
+                  style={styles.senderName}
+                  numberOfLines={1}
+                >
+                  {item.userName}
+                </ResponsiveText>
+                <ResponsiveText 
+                  size="sm" 
+                  color={theme === 'dark' ? '#AAA' : '#666'} 
+                  style={styles.businessName}
+                  numberOfLines={1}
+                >
+                  {item.businessName}
+                </ResponsiveText>
+                <ResponsiveText 
+                  size="xs" 
+                  color={theme === 'dark' ? '#AAA' : '#666'} 
+                  style={styles.transactionDate}
+                >
+                  {formatDate(item.timestamp)}
+                </ResponsiveText>
+              </>
+            )}
+          </View>
+          <View style={styles.pointsContainer}>
+            <ResponsiveText size="lg" weight="bold" color={isRewardClaimed ? "#9C27B0" : "#4CAF50"} style={styles.pointsText}>
+              {isRewardClaimed ? '' : '+'}{item.points}
+            </ResponsiveText>
+            <Ionicons name="star" size={iconSizes.sm} color="#FFD700" />
+          </View>
         </View>
-        <View style={styles.transactionInfo}>
-          <ResponsiveText 
-            size="md" 
-            weight="600" 
-            color={theme === 'dark' ? '#FFF' : '#333'} 
-            style={styles.senderName}
-            numberOfLines={1}
-          >
-            {item.userName}
-          </ResponsiveText>
-          <ResponsiveText 
-            size="sm" 
-            color={theme === 'dark' ? '#AAA' : '#666'} 
-            style={styles.businessName}
-            numberOfLines={1}
-          >
-            {item.businessName}
-          </ResponsiveText>
-          <ResponsiveText 
-            size="xs" 
-            color={theme === 'dark' ? '#AAA' : '#666'} 
-            style={styles.transactionDate}
-          >
-            {formatDate(item.timestamp)}
-          </ResponsiveText>
-        </View>
-        <View style={styles.pointsContainer}>
-          <ResponsiveText size="lg" weight="bold" color="#4CAF50" style={styles.pointsText}>
-            +{item.points}
-          </ResponsiveText>
-          <Ionicons name="star" size={iconSizes.sm} color="#FFD700" />
+        <View style={styles.statusContainer}>
+          <View style={[
+            styles.statusBadge,
+            { backgroundColor: item.status === 'completed' ? (isRewardClaimed ? '#9C27B0' : '#4CAF50') : '#FF9800' }
+          ]}>
+            <ResponsiveText size="xs" weight="600" color="#fff" style={styles.statusText}>
+              {isRewardClaimed ? 'Reward Claimed' : (item.status === 'completed' ? 'Completed' : item.status)}
+            </ResponsiveText>
+          </View>
         </View>
       </View>
-      <View style={styles.statusContainer}>
-        <View style={[
-          styles.statusBadge,
-          { backgroundColor: item.status === 'completed' ? '#4CAF50' : '#FF9800' }
-        ]}>
-          <ResponsiveText size="xs" weight="600" color="#fff" style={styles.statusText}>
-            {item.status === 'completed' ? 'Completed' : item.status}
-          </ResponsiveText>
-        </View>
-      </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <LinearGradient colors={theme === 'light' ? lightGradient : darkGradient} style={styles.container}>

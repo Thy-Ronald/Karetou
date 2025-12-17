@@ -223,43 +223,63 @@ const TransactionHistoryScreen = () => {
     },
   }), [spacing, fontSizes, iconSizes, borderRadiusValues, dimensions, isSmallScreen, isSmallDevice, minTouchTarget, headerPaddingTop, responsiveHeight, responsiveWidth, theme]);
 
-  const renderTransaction = ({ item }: { item: Transaction }) => (
-    <ResponsiveView style={styles.transactionCard}>
-      <ResponsiveView style={styles.transactionHeader}>
-        <ResponsiveView style={styles.transactionIconContainer}>
-          <Ionicons 
-            name="arrow-up-circle" 
-            size={iconSizes?.lg || 32} 
-            color="#FF5733" 
-          />
+  const renderTransaction = ({ item }: { item: Transaction }) => {
+    const isRewardClaimed = item.type === 'reward_claimed';
+    
+    return (
+      <ResponsiveView style={styles.transactionCard}>
+        <ResponsiveView style={styles.transactionHeader}>
+          <ResponsiveView style={styles.transactionIconContainer}>
+            <Ionicons 
+              name={isRewardClaimed ? "gift" : "arrow-up-circle"} 
+              size={iconSizes?.lg || 32} 
+              color={isRewardClaimed ? "#9C27B0" : "#FF5733"} 
+            />
+          </ResponsiveView>
+          <ResponsiveView style={styles.transactionInfo}>
+            {isRewardClaimed && item.rewardName ? (
+              <>
+                <ResponsiveText size="md" weight="600" color={theme === 'light' ? '#333' : '#fff'} style={styles.businessName}>
+                  🎁 {item.rewardName}
+                </ResponsiveText>
+                <ResponsiveText size="sm" color={theme === 'light' ? '#666' : '#aaa'} style={styles.transactionDate}>
+                  from {item.businessName}
+                </ResponsiveText>
+              </>
+            ) : (
+              <>
+                <ResponsiveText size="md" weight="600" color={theme === 'light' ? '#333' : '#fff'} style={styles.businessName}>
+                  {item.businessName}
+                </ResponsiveText>
+                <ResponsiveText size="xs" color={theme === 'light' ? '#666' : '#aaa'} style={styles.transactionDate}>
+                  {formatDate(item.timestamp)}
+                </ResponsiveText>
+              </>
+            )}
+            <ResponsiveText size="xs" color={theme === 'light' ? '#666' : '#aaa'} style={[styles.transactionDate, { marginTop: isRewardClaimed ? spacing?.xs || 4 : 0 }]}>
+              {formatDate(item.timestamp)}
+            </ResponsiveText>
+          </ResponsiveView>
+          <ResponsiveView style={styles.pointsContainer}>
+            <ResponsiveText size="lg" weight="bold" color={isRewardClaimed ? "#9C27B0" : "#FF5733"} style={styles.pointsText}>
+              -{item.points}
+            </ResponsiveText>
+            <Ionicons name="star" size={iconSizes?.sm || 16} color="#FFD700" />
+          </ResponsiveView>
         </ResponsiveView>
-        <ResponsiveView style={styles.transactionInfo}>
-          <ResponsiveText size="md" weight="600" color={theme === 'light' ? '#333' : '#fff'} style={styles.businessName}>
-            {item.businessName}
-          </ResponsiveText>
-          <ResponsiveText size="xs" color={theme === 'light' ? '#666' : '#aaa'} style={styles.transactionDate}>
-            {formatDate(item.timestamp)}
-          </ResponsiveText>
-        </ResponsiveView>
-        <ResponsiveView style={styles.pointsContainer}>
-          <ResponsiveText size="lg" weight="bold" color="#FF5733" style={styles.pointsText}>
-            -{item.points}
-          </ResponsiveText>
-          <Ionicons name="star" size={iconSizes?.sm || 16} color="#FFD700" />
+        <ResponsiveView style={styles.statusContainer}>
+          <ResponsiveView style={[
+            styles.statusBadge,
+            { backgroundColor: item.status === 'completed' ? (isRewardClaimed ? '#9C27B0' : '#4CAF50') : '#FF9800' }
+          ]}>
+            <ResponsiveText size="xs" weight="600" color="#fff" style={styles.statusText}>
+              {isRewardClaimed ? 'Reward Claimed' : (item.status === 'completed' ? 'Completed' : item.status)}
+            </ResponsiveText>
+          </ResponsiveView>
         </ResponsiveView>
       </ResponsiveView>
-      <ResponsiveView style={styles.statusContainer}>
-        <ResponsiveView style={[
-          styles.statusBadge,
-          { backgroundColor: item.status === 'completed' ? '#4CAF50' : '#FF9800' }
-        ]}>
-          <ResponsiveText size="xs" weight="600" color="#fff" style={styles.statusText}>
-            {item.status === 'completed' ? 'Completed' : item.status}
-          </ResponsiveText>
-        </ResponsiveView>
-      </ResponsiveView>
-    </ResponsiveView>
-  );
+    );
+  };
 
   return (
     <LinearGradient colors={theme === 'light' ? lightGradient : darkGradient} style={styles.container}>

@@ -423,7 +423,7 @@ const Navigate = () => {
   const [followLoading, setFollowLoading] = useState(false);
   const [userFollows, setUserFollows] = useState<Set<string>>(new Set());
   const followService = useRef(FollowService.getInstance()).current;
-  const followerUnsubRef = useRef<() => void>();
+  const followerUnsubRef = useRef<(() => void) | undefined>(undefined);
 
   // Ensure we have a selectedPlace from navigation params (for immediate follow)
   useEffect(() => {

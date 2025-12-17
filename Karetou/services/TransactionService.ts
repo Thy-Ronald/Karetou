@@ -3,7 +3,7 @@ import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 
 export interface Transaction {
   id: string;
-  type: 'sent' | 'received';
+  type: 'sent' | 'received' | 'reward_claimed';
   userId: string;
   userName: string;
   businessId: string;
@@ -11,6 +11,7 @@ export interface Transaction {
   points: number;
   timestamp: string;
   status: 'completed' | 'pending' | 'failed';
+  rewardName?: string;
 }
 
 class TransactionService {
@@ -25,13 +26,14 @@ class TransactionService {
 
   // Create a transaction record
   async createTransaction(
-    type: 'sent' | 'received',
+    type: 'sent' | 'received' | 'reward_claimed',
     userId: string,
     userName: string,
     businessId: string,
     businessName: string,
     points: number,
-    status: 'completed' | 'pending' | 'failed' = 'completed'
+    status: 'completed' | 'pending' | 'failed' = 'completed',
+    rewardName?: string
   ): Promise<string> {
     try {
       const transactionData = {
@@ -43,6 +45,7 @@ class TransactionService {
         points,
         timestamp: new Date().toISOString(),
         status,
+        ...(rewardName && { rewardName }),
       };
 
       const docRef = await addDoc(collection(db, 'transactions'), transactionData);
@@ -54,19 +57,37 @@ class TransactionService {
     }
   }
 
-  // Get user's transaction history (sent points)
+  // Get user's transaction history (sent points and claimed rewards)
   async getUserTransactions(userId: string, limitCount: number = 50): Promise<Transaction[]> {
     try {
-      const transactionsQuery = query(
+      // Get both 'sent' and 'reward_claimed' transactions
+      const sentQuery = query(
         collection(db, 'transactions'),
         where('userId', '==', userId),
         where('type', '==', 'sent')
       );
+      
+      const claimedQuery = query(
+        collection(db, 'transactions'),
+        where('userId', '==', userId),
+        where('type', '==', 'reward_claimed')
+      );
 
-      const snapshot = await getDocs(transactionsQuery);
+      const [sentSnapshot, claimedSnapshot] = await Promise.all([
+        getDocs(sentQuery),
+        getDocs(claimedQuery)
+      ]);
+
       const transactions: Transaction[] = [];
 
-      snapshot.forEach((doc) => {
+      sentSnapshot.forEach((doc) => {
+        transactions.push({
+          id: doc.id,
+          ...doc.data(),
+        } as Transaction);
+      });
+
+      claimedSnapshot.forEach((doc) => {
         transactions.push({
           id: doc.id,
           ...doc.data(),
@@ -86,19 +107,37 @@ class TransactionService {
     }
   }
 
-  // Get business owner's transaction history (received points)
+  // Get business owner's transaction history (received points and reward claims)
   async getBusinessOwnerTransactions(businessId: string, limitCount: number = 50): Promise<Transaction[]> {
     try {
-      const transactionsQuery = query(
+      // Get both 'received' and 'reward_claimed' transactions
+      const receivedQuery = query(
         collection(db, 'transactions'),
         where('businessId', '==', businessId),
         where('type', '==', 'received')
       );
+      
+      const claimedQuery = query(
+        collection(db, 'transactions'),
+        where('businessId', '==', businessId),
+        where('type', '==', 'reward_claimed')
+      );
 
-      const snapshot = await getDocs(transactionsQuery);
+      const [receivedSnapshot, claimedSnapshot] = await Promise.all([
+        getDocs(receivedQuery),
+        getDocs(claimedQuery)
+      ]);
+
       const transactions: Transaction[] = [];
 
-      snapshot.forEach((doc) => {
+      receivedSnapshot.forEach((doc) => {
+        transactions.push({
+          id: doc.id,
+          ...doc.data(),
+        } as Transaction);
+      });
+
+      claimedSnapshot.forEach((doc) => {
         transactions.push({
           id: doc.id,
           ...doc.data(),
@@ -143,14 +182,32 @@ class TransactionService {
       const allTransactions: Transaction[] = [];
 
       for (const businessId of businessIds) {
-        const transactionsQuery = query(
+        // Get both 'received' and 'reward_claimed' transactions
+        const receivedQuery = query(
           collection(db, 'transactions'),
           where('businessId', '==', businessId),
           where('type', '==', 'received')
         );
+        
+        const claimedQuery = query(
+          collection(db, 'transactions'),
+          where('businessId', '==', businessId),
+          where('type', '==', 'reward_claimed')
+        );
 
-        const snapshot = await getDocs(transactionsQuery);
-        snapshot.forEach((doc) => {
+        const [receivedSnapshot, claimedSnapshot] = await Promise.all([
+          getDocs(receivedQuery),
+          getDocs(claimedQuery)
+        ]);
+
+        receivedSnapshot.forEach((doc) => {
+          allTransactions.push({
+            id: doc.id,
+            ...doc.data(),
+          } as Transaction);
+        });
+
+        claimedSnapshot.forEach((doc) => {
           allTransactions.push({
             id: doc.id,
             ...doc.data(),

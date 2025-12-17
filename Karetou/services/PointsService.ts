@@ -1,5 +1,5 @@
 import { db } from '../firebase';
-import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 import NotificationService from './NotificationService';
 import TransactionService from './TransactionService';
 
@@ -428,6 +428,153 @@ class PointsService {
       return {
         success: false,
         message: 'Failed to transfer points. Please try again.',
+      };
+    }
+  }
+
+  // Claim a reward using loyalty points
+  async claimReward(
+    userId: string,
+    businessId: string,
+    rewardId: string,
+    rewardName: string,
+    pointsCost: number,
+    userName: string
+  ): Promise<{ success: boolean; message: string; remainingPoints?: number }> {
+    try {
+      if (pointsCost <= 0) {
+        return {
+          success: false,
+          message: 'Invalid reward cost.',
+        };
+      }
+
+      // Get user points
+      const userPoints = await this.getUserPoints(userId);
+      
+      // Check if user has enough loyalty points for this business
+      const businessLoyalty = userPoints.businessLoyaltyPoints || [];
+      const businessIndex = businessLoyalty.findIndex(bp => bp.businessId === businessId);
+      
+      if (businessIndex < 0) {
+        return {
+          success: false,
+          message: 'You have no loyalty points for this business.',
+        };
+      }
+
+      const businessLoyaltyPoints = businessLoyalty[businessIndex].points;
+      
+      if (businessLoyaltyPoints < pointsCost) {
+        return {
+          success: false,
+          message: `Insufficient points. You have ${businessLoyaltyPoints} points, but this reward costs ${pointsCost} points.`,
+        };
+      }
+
+      // Get business details
+      const businessDoc = await getDoc(doc(db, 'businesses', businessId));
+      if (!businessDoc.exists()) {
+        return {
+          success: false,
+          message: 'Business not found.',
+        };
+      }
+
+      const businessData = businessDoc.data();
+      const businessOwnerId = businessData.userId;
+      const businessName = businessData.businessName || 'Unknown Business';
+
+      if (!businessOwnerId) {
+        return {
+          success: false,
+          message: 'Business owner not found.',
+        };
+      }
+
+      // Update user points - deduct from business loyalty points
+      const updatedBusinessLoyalty = [...businessLoyalty];
+      updatedBusinessLoyalty[businessIndex] = {
+        ...updatedBusinessLoyalty[businessIndex],
+        points: Math.max(0, updatedBusinessLoyalty[businessIndex].points - pointsCost),
+      };
+
+      // Also deduct from total points
+      const updatedTotalPoints = Math.max(0, userPoints.totalPoints - pointsCost);
+
+      // Update user document
+      await updateDoc(doc(db, 'users', userId), {
+        'points.totalPoints': updatedTotalPoints,
+        'points.businessLoyaltyPoints': updatedBusinessLoyalty,
+      });
+
+      // Record reward claim in business rewards collection
+      const claimsRef = collection(db, 'businesses', businessId, 'rewards', rewardId, 'claims');
+      await addDoc(claimsRef, {
+        userId,
+        userName,
+        claimedAt: new Date().toISOString(),
+        pointsCost,
+      });
+
+      // Create notification for business owner
+      const notificationService = NotificationService.getInstance();
+      await notificationService.createNotification({
+        title: '🎁 Reward Claimed!',
+        body: `${userName} claimed "${rewardName}" for ${pointsCost} points!`,
+        type: 'reward_claimed',
+        userId: businessOwnerId,
+        read: false,
+        data: {
+          businessId,
+          businessName,
+          rewardId,
+          rewardName,
+          claimantName: userName,
+          pointsCost,
+        },
+      });
+
+      // Record transactions for both user and business owner
+      const transactionService = TransactionService.getInstance();
+      try {
+        // Transaction for the user who claimed the reward
+        await transactionService.createTransaction(
+          'reward_claimed',
+          userId,
+          userName,
+          businessId,
+          businessName,
+          pointsCost,
+          'completed',
+          rewardName
+        );
+
+        // Transaction for the business owner (to track reward claims)
+        await transactionService.createTransaction(
+          'reward_claimed',
+          businessOwnerId,
+          businessData.ownerName || businessName, // Use owner name if available
+          businessId,
+          businessName,
+          pointsCost,
+          'completed',
+          rewardName
+        );
+      } catch (error) {
+        console.error('Error recording transaction:', error);
+      }
+
+      return {
+        success: true,
+        message: `Successfully claimed "${rewardName}"!`,
+        remainingPoints: updatedBusinessLoyalty[businessIndex].points,
+      };
+    } catch (error) {
+      console.error('Error claiming reward:', error);
+      return {
+        success: false,
+        message: 'Failed to claim reward. Please try again.',
       };
     }
   }

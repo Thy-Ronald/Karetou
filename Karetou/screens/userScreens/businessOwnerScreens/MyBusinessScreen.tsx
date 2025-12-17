@@ -744,6 +744,24 @@ const MyBusinessScreen = () => {
                     />
                   </View>
 
+                  {selectedBusiness?.rewardsEnabled !== false && (
+                    <TouchableOpacity
+                      style={styles.manageRewardsButton}
+                      onPress={() => {
+                        setModalVisible(false);
+                        (navigation as any).navigate('RewardsManagement', {
+                          businessId: selectedBusiness.id,
+                          businessName: selectedBusiness.businessName,
+                        });
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="gift-outline" size={20} color="#667eea" />
+                      <Text style={styles.manageRewardsButtonText}>Manage Rewards</Text>
+                      <Ionicons name="chevron-forward" size={20} color="#999" />
+                    </TouchableOpacity>
+                  )}
+
                   <View style={styles.toggleRow}>
                     <View style={styles.toggleTextContainer}>
                       <Text style={styles.modalDetailLabel}>QR Code Scanning</Text>
@@ -1222,6 +1240,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#777',
     marginTop: 2,
+  },
+  manageRewardsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+    borderRadius: 12,
+    padding: 15,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(102, 126, 234, 0.3)',
+  },
+  manageRewardsButtonText: {
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#667eea',
   },
   topButtonContainer: {
     flexDirection: 'column',

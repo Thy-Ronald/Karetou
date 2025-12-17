@@ -61,6 +61,16 @@ service firebase.storage {
       allow write: if isAuthenticated();
     }
     
+    // Reward images - allow business owners to upload reward images
+    match /rewards/{businessId}/{fileName} {
+      // Anyone authenticated can read reward images
+      allow read: if isAuthenticated();
+      // Allow authenticated users to upload reward images
+      // Note: Business ownership verification should be done in the app code
+      // Storage rules don't have direct access to Firestore to check business ownership
+      allow write: if isAuthenticated();
+    }
+    
     // Default: deny all other access
     match /{allPaths=**} {
       allow read, write: if false;

@@ -30,6 +30,7 @@ import QRScannerScreen from './screens/userScreens/QRScannerScreen';
 import TransactionHistoryScreen from './screens/userScreens/TransactionHistoryScreen';
 import BusinessTransactionHistoryScreen from './screens/userScreens/businessOwnerScreens/BusinessTransactionHistoryScreen';
 import FollowingListScreen from './screens/userScreens/FollowingListScreen';
+import RewardsManagementScreen from './screens/userScreens/businessOwnerScreens/RewardsManagementScreen';
 
 
 const Stack = createStackNavigator();
@@ -88,6 +89,7 @@ const BusinessAppStack = () => (
     <Stack.Screen name="Promotions" component={PromotionsScreen} />
     <Stack.Screen name="NotificationScreen" component={NotificationScreen} />
     <Stack.Screen name="BusinessTransactionHistoryScreen" component={BusinessTransactionHistoryScreen} />
+    <Stack.Screen name="RewardsManagement" component={RewardsManagementScreen} />
   </Stack.Navigator>
 );
 

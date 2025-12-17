@@ -127,6 +127,36 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && request.auth.uid == followerId;
     }
 
+    // Rewards subcollection
+    match /businesses/{businessId}/rewards/{rewardId} {
+      // Anyone authenticated can read rewards (to see available rewards)
+      allow read: if isAuthenticated();
+      // Only business owner can create/update/delete rewards
+      allow create: if isAuthenticated() && 
+        exists(/databases/$(database)/documents/businesses/$(businessId)) &&
+        get(/databases/$(database)/documents/businesses/$(businessId)).data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && 
+        exists(/databases/$(database)/documents/businesses/$(businessId)) &&
+        get(/databases/$(database)/documents/businesses/$(businessId)).data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() && 
+        exists(/databases/$(database)/documents/businesses/$(businessId)) &&
+        get(/databases/$(database)/documents/businesses/$(businessId)).data.userId == request.auth.uid;
+      
+      // Reward claims subcollection
+      match /claims/{claimId} {
+        // Business owner can read all claims, users can read their own claims
+        allow read: if isAuthenticated() && (
+          (exists(/databases/$(database)/documents/businesses/$(businessId)) &&
+           get(/databases/$(database)/documents/businesses/$(businessId)).data.userId == request.auth.uid) ||
+          resource.data.userId == request.auth.uid
+        );
+        // Any authenticated user can create a claim (when claiming a reward)
+        allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+        // No updates or deletes for claims
+        allow update, delete: if false;
+      }
+    }
+
     // User follows mirror: users/{userId}/follows/{businessId}
     match /users/{userId}/follows/{businessId} {
       allow read: if isAuthenticated() && request.auth.uid == userId;
