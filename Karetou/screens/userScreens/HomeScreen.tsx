@@ -2450,13 +2450,26 @@ const HomeScreen = () => {
     };
   }, [user?.uid, placesToVisit, suggestedPlaces, registerCleanup]);
 
-  // Sort suggested places by real ratings when businessRatings updates
+  // Sort suggested places: 4.0+ ratings first, then 0 ratings, then others (all sorted highest first within their group)
   useEffect(() => {
     if (suggestedPlaces.length > 0) {
       const sorted = [...suggestedPlaces].sort((a, b) => {
         const ratingA = parseFloat(businessRatings[a.id]?.average || a.rating || '0');
         const ratingB = parseFloat(businessRatings[b.id]?.average || b.rating || '0');
-        return ratingB - ratingA; // Highest first
+        
+        // Priority 1: Businesses with 4.0+ ratings come first
+        const isAHighRating = ratingA >= 4.0 && ratingA > 0;
+        const isBHighRating = ratingB >= 4.0 && ratingB > 0;
+        
+        if (isAHighRating && !isBHighRating) return -1; // A (4.0+) comes before B
+        if (isBHighRating && !isAHighRating) return 1;  // B (4.0+) comes before A
+        
+        // Priority 2: Businesses with 0 ratings come after 4.0+ ratings
+        if (ratingA === 0 && ratingB !== 0 && !isBHighRating) return -1; // A (0 rating) comes before B (< 4.0)
+        if (ratingB === 0 && ratingA !== 0 && !isAHighRating) return 1;  // B (0 rating) comes before A (< 4.0)
+        
+        // Within same priority group (both 4.0+, both 0, or both < 4.0), sort by rating (highest first)
+        return ratingB - ratingA;
       });
       // Only update if order actually changed to avoid infinite loop
       const currentIds = suggestedPlaces.map(p => p.id).join(',');
