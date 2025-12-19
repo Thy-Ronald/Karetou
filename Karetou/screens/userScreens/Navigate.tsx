@@ -424,6 +424,7 @@ const Navigate = () => {
   const [userFollows, setUserFollows] = useState<Set<string>>(new Set());
   const followService = useRef(FollowService.getInstance()).current;
   const followerUnsubRef = useRef<(() => void) | undefined>(undefined);
+  const selectedPlaceRef = useRef<Place | null>(null);
 
   // Ensure we have a selectedPlace from navigation params (for immediate follow)
   useEffect(() => {
@@ -1672,7 +1673,8 @@ const Navigate = () => {
   };
 
   // Check if business is currently closed based on operating hours
-  const checkIfBusinessClosed = (business: any) => {
+  // Memoized with useCallback to prevent unnecessary re-renders
+  const checkIfBusinessClosed = useCallback((business: any) => {
     console.log('🕐 Checking business hours for:', business.name);
     console.log('🕐 businessHours:', business.businessHours);
     console.log('🕐 Opening time:', business.openingTime);
@@ -1737,7 +1739,7 @@ const Navigate = () => {
       setIsBusinessClosed(false);
       return false;
     }
-  };
+  }, []); // Empty dependency array since setIsBusinessClosed is stable
 
   // Replace getDirectionsFromGoogle with getRouteFromORS
   const getRouteFromORS = async (
@@ -3090,22 +3092,52 @@ const Navigate = () => {
      }
    }, [isNavigating, selectedPlace, location]);
 
-   // Monitor navigation state changes
-   useEffect(() => {
-     if (isNavigating && selectedPlace) {
-       console.log('🎯 Navigation active for:', selectedPlace.name);
-       console.log('📍 Route details during navigation:', {
-         hasRouteDetails: !!routeDetails,
-         coordinatesCount: routeDetails?.coordinates?.length || 0,
-         distance: routeDetails?.distance || 'N/A',
-         duration: routeDetails?.duration || 'N/A'
-       });
-     } else if (!isNavigating) {
-       console.log('🛑 Navigation stopped');
-     }
-   }, [isNavigating, selectedPlace, routeDetails]);
+  // Monitor navigation state changes
+  useEffect(() => {
+    if (isNavigating && selectedPlace) {
+      console.log('🎯 Navigation active for:', selectedPlace.name);
+      console.log('📍 Route details during navigation:', {
+        hasRouteDetails: !!routeDetails,
+        coordinatesCount: routeDetails?.coordinates?.length || 0,
+        distance: routeDetails?.distance || 'N/A',
+        duration: routeDetails?.duration || 'N/A'
+      });
+    } else if (!isNavigating) {
+      console.log('🛑 Navigation stopped');
+    }
+  }, [isNavigating, selectedPlace, routeDetails]);
 
-   // Monitor radius changes and adjust map view accordingly
+  // Keep ref in sync with selectedPlace
+  useEffect(() => {
+    selectedPlaceRef.current = selectedPlace;
+  }, [selectedPlace]);
+
+  // Real-time business status check when modal is visible
+  // Uses ref to avoid recreating interval when selectedPlace object reference changes
+  useEffect(() => {
+    if (!detailsModalVisible || !selectedPlaceRef.current) {
+      return;
+    }
+
+    // Check immediately when modal opens
+    checkIfBusinessClosed(selectedPlaceRef.current);
+
+    // Set up interval to check every minute (60000ms)
+    // Uses ref to always get the latest selectedPlace without recreating interval
+    const intervalId = setInterval(() => {
+      const currentPlace = selectedPlaceRef.current;
+      if (currentPlace) {
+        checkIfBusinessClosed(currentPlace);
+      }
+    }, 60000); // Check every minute
+
+    // Cleanup interval when modal closes or component unmounts
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [detailsModalVisible, selectedPlace?.id, checkIfBusinessClosed]); // Only depend on modal visibility and business ID
+
+  // Monitor radius changes and adjust map view accordingly
    useEffect(() => {
      if (!isNavigating && location && mapRef.current) {
        console.log('📐 Radius changed to:', circleRadius, 'meters - adjusting map view');
