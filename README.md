@@ -211,7 +211,7 @@ If you see errors about missing Firebase configuration:
 
 ## License
 
-© 2024 Karetou. All rights reserved.
+© 2025 Karetou. All rights reserved.
 
 ## Support
 
