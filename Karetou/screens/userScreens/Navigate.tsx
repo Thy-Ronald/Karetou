@@ -339,8 +339,11 @@ const AVERAGE_SPEEDS = {
 
 // Get OpenRouteService API key from environment variables
 const ORS_API_KEY = Constants.expoConfig?.extra?.orsApiKey || 
-                    process.env.EXPO_PUBLIC_ORS_API_KEY || 
-                    '5b3ce3597851110001cf6248e6a2bc17f1e244d5bdc5cd334e10232b'; // Fallback for backward compatibility
+                    process.env.EXPO_PUBLIC_ORS_API_KEY;
+
+if (!ORS_API_KEY) {
+  console.warn('OpenRouteService API key is missing. Set EXPO_PUBLIC_ORS_API_KEY in your .env file.');
+}
 
 // Haversine distance function (from reference code)
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -2014,8 +2017,11 @@ const Navigate = () => {
 
       // Get Google Maps API key from environment variables
       const googleMapsApiKey = Constants.expoConfig?.extra?.googleMapsApiKey || 
-                               Constants.expoConfig?.android?.config?.googleMaps?.apiKey ||
-                               'AIzaSyByXb-FgYHiNhVIsK00kM1jdXYr_OerV7Q'; // Fallback for backward compatibility
+                               Constants.expoConfig?.android?.config?.googleMaps?.apiKey;
+
+      if (!googleMapsApiKey) {
+        throw new Error('Google Maps API key is missing. Set EXPO_PUBLIC_GOOGLE_MAPS_API_KEY in your .env file.');
+      }
 
       const response = await fetch(
         `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&mode=${googleMode}&key=${googleMapsApiKey}`,

@@ -9,17 +9,19 @@ import Constants from 'expo-constants';
 // Reads from app.config.js -> extra.firebase (set via .env or EAS Secrets)
 const firebaseConfigFromEnv = Constants.expoConfig?.extra?.firebase;
 
-// Fallback to hardcoded values only if environment variables are not set
-// This ensures backward compatibility during transition
-const firebaseConfig = firebaseConfigFromEnv || {
-    apiKey: "AIzaSyByXb-FgYHiNhVIsK00kM1jdXYr_OerV7Q",
-    authDomain: "karetou-cfd5b.firebaseapp.com",
-    projectId: "karetou-cfd5b",
-    storageBucket: "karetou-cfd5b.firebasestorage.app",
-    messagingSenderId: "40950648608",
-    appId: "1:40950648608:web:91b4f1733a28173d2c9145",
-    measurementId: "G-D4V96GLYED"
-};
+// Validate that Firebase config is provided via environment variables
+if (!firebaseConfigFromEnv) {
+    throw new Error(
+        'Firebase configuration is missing. Please set environment variables:\n' +
+        'EXPO_PUBLIC_FIREBASE_API_KEY, EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN, ' +
+        'EXPO_PUBLIC_FIREBASE_PROJECT_ID, EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET, ' +
+        'EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID, EXPO_PUBLIC_FIREBASE_APP_ID, ' +
+        'EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID\n' +
+        'Create a .env file in the Karetou directory or use EAS Secrets for production.'
+    );
+}
+
+const firebaseConfig = firebaseConfigFromEnv;
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
